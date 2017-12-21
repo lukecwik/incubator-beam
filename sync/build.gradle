@@ -1,0 +1,19 @@
+apply plugin : 'org.ysb33r.ivypot'
+
+syncRemoteRepositories {
+  repoRoot = "${rootProject.projectDir}/repo"
+  includeBuildScriptDependencies = true
+  addAllProjects()
+
+  repositories {
+    mavenLocal()
+    mavenCentral()
+    jcenter()
+
+    maven { url "https://plugins.gradle.org/m2/" }
+    maven { url "http://repo.spring.io/plugins-release" }
+
+    maven { url "http://conjars.org/repo/" }
+  }
+}
+

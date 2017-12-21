@@ -94,7 +94,9 @@ include ':beam-examples-parent:beam-examples-java'
 include ':beam-examples-parent:beam-examples-java8'
 include ':beam-examples-parent'
 include ':beam-sdks-java-javadoc'
+include ':sync'
 
+project(':sync').projectDir = "$rootDir/sync" as File
 project(':beam-sdks-java-build-tools').projectDir = "$rootDir/sdks/java/build-tools" as File
 project(':beam-model-parent:beam-model-pipeline').projectDir = "$rootDir/model/pipeline" as File
 project(':beam-model-parent:beam-model-job-management').projectDir = "$rootDir/model/job-management" as File

@@ -151,11 +151,18 @@ ext.library = [
 // fetch and enable plugins.
 buildscript {
   repositories {
-    mavenLocal()
-    mavenCentral()
-    jcenter()
-    maven { url "https://plugins.gradle.org/m2/" }
-    maven { url "http://repo.spring.io/plugins-release" }
+    if(gradle.startParameter.isOffline()) {
+      ivy {
+        url project(":").file("repo").absolutePath
+        layout "gradle"
+      }
+    } else {
+      mavenLocal()
+      mavenCentral()
+      jcenter()
+      maven { url "https://plugins.gradle.org/m2/" }
+      maven { url "http://repo.spring.io/plugins-release" }
+    }
   }
   dependencies {
     classpath "net.ltgt.gradle:gradle-apt-plugin:0.12"                         // Enable a Java annotation processor
@@ -169,6 +176,7 @@ buildscript {
     classpath "cz.malohlava:visteg:1.0.3"                                      // Enable generating Gradle task dependencies as ".dot" files
     classpath "com.github.jengelman.gradle.plugins:shadow:2.0.1"               // Enable shading Java dependencies
     classpath "ca.coglinc:javacc-gradle-plugin:2.4.0"                          // Enable the JavaCC parser generator
+    classpath "org.ysb33r.gradle:ivypot:0.6"                                   // Enable Ivypot to create an offline repository
   }
 }
 
@@ -276,4 +284,22 @@ task javaPreCommit() {
     dependsOn javaPreCommitRoot + ":buildDependents"
   }
   dependsOn ":beam-examples-parent:beam-examples-java:preCommit"
+}
+
+gradle.taskGraph.afterTask { task ->
+ StringBuffer taskDetails = new StringBuffer()
+ taskDetails << """"-------------
+name:$task.name group:$task.group : $task.description
+conv:$task.convention.plugins
+inputs:
+"""
+  task.inputs.files.each{ it ->
+   taskDetails << " ${it.absolutePath}\n"
+  }
+  taskDetails << "outputs:\n"
+  task.outputs.files.each{ it ->
+   taskDetails << " ${it.absolutePath}\n"
+  }
+  taskDetails << "-------------"
+  println taskDetails
 }

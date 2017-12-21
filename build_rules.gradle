@@ -40,18 +40,27 @@ version = "2.3.0-SNAPSHOT"
 
 // Define the default set of repositories for all builds.
 repositories {
-  mavenLocal()
-  mavenCentral()
-  jcenter()
+  if(gradle.startParameter.isOffline()) {
+    ivy {
+      url project(":").file("repo").absolutePath
+      layout "gradle"
+    }
+  } else {
+    mavenLocal()
+    mavenCentral()
+    jcenter()
 
-  // Release staging repository
-  maven { url "https://oss.sonatype.org/content/repositories/staging/" }
+    maven { url "http://conjars.org/repo/" }
 
-  // Apache nightly snapshots
-  maven { url "https://repository.apache.org/snapshots" }
+    // Release staging repository
+    maven { url "https://oss.sonatype.org/content/repositories/staging/" }
 
-  // Apache release snapshots
-  maven { url "https://repository.apache.org/content/repositories/releases" }
+    // Apache nightly snapshots
+    maven { url "https://repository.apache.org/snapshots" }
+
+    // Apache release snapshots
+    maven { url "https://repository.apache.org/content/repositories/releases" }
+  }
 }
 
 // Provide code coverage
@@ -291,7 +300,6 @@ ext.applyJavaNature = {
       force library.java.values()
     }
   }
-
 }
 
 /*************************************************************************************************/
