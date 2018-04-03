@@ -235,9 +235,9 @@ task performanceTest(type: Exec) {
           "--beam_options_config_file=${optionsConfigFile}",
 
           "--beam_it_class=${integrationTest}",
-          "--beam_it_module=${itModule}"
+          "--beam_it_module=${itModule}",
 
-          "--beam_extra_properties=${extraProperties}"
+          "--beam_extra_properties=${extraProperties}",
           "--beam_runner=${runner}"
 
 }
