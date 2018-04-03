@@ -44,9 +44,10 @@ import org.junit.Test;
  * <p>You can run this test by doing the following from the beam parent module directory:
  *
  * <pre>
- *  mvn -e -Pio-it verify -pl sdks/java/io/elasticsearch -DintegrationTestPipelineOptions='[
+ *  ./gradlew integrationTest -p sdks/java/io/elasticsearch -DintegrationTestPipelineOptions='[
  *  "--elasticsearchServer=1.2.3.4",
  *  "--elasticsearchHttpPort=9200"]'
+ *  --tests org.apache.beam.sdk.io.elasticsearch.ElasticsearchIOIT
  * </pre>
  */
 public class ElasticsearchIOIT {

@@ -48,13 +48,16 @@ import org.junit.runners.JUnit4;
  * <p>This test requires a running instance of MongoDB. Pass in connection information using
  * PipelineOptions:
  * <pre>
- *  mvn -e -Pio-it verify -pl sdks/java/io/mongodb -DintegrationTestPipelineOptions='[
+ *  ./gradlew integrationTest -p sdks/java/io/mongodb -DintegrationTestPipelineOptions='[
  *  "--mongoDBHostName=1.2.3.4",
  *  "--mongoDBPort=27017",
  *  "--mongoDBDatabaseName=mypass",
  *  "--numberOfRecords=1000" ]'
+ *  --tests org.apache.beam.sdk.io.mongodb.MongoDbIOIT
  * </pre>
  *
+ * <p>Please see beam parent's 'build.gradle' for instructions regarding
+ * running this test using Beam performance testing framework.</p>
  */
 @RunWith(JUnit4.class)
 public class MongoDBIOIT {
