@@ -18,6 +18,7 @@
 
 apply from: project(":").file("build_rules.gradle")
 applyJavaNature(artifactId: "beam-sdks-java-io-kinesis")
+apply from: project(":sdks:java:io").file("build_rules.gradle")
 
 description = "Apache Beam :: SDKs :: Java :: IO :: Kinesis"
 
