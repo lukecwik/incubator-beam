@@ -212,6 +212,9 @@ task performanceTest(type: Exec) {
 
   def integrationTest = getITProperty('integrationTest')
   def itModule = getITProperty('itModule')
+  def runner = getITProperty('integrationTestRunner')
+
+  def extraProperties = getITProperty('beamExtraProperties')
 
   commandLine "${pkbLocation}",
           "--dpb_log_level=${logLevel}",
@@ -233,6 +236,10 @@ task performanceTest(type: Exec) {
 
           "--beam_it_class=${integrationTest}",
           "--beam_it_module=${itModule}"
+
+          "--beam_extra_properties=${extraProperties}"
+          "--beam_runner=${runner}"
+
 }
 
 private static String getITProperty(String property, String defaultValue = '') {
