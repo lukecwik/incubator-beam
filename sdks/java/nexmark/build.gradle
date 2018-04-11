@@ -74,23 +74,13 @@ dependencies {
 
   // The Spark runner requires the user to provide a Spark dependency. For self-contained
   // runs with the Spark runner, we can provide such a dependency. This is deliberately phrased
-  // to not hardcode any runner other than :runners:direct-java
+  // to not hardcode any runner other than :beam-runners-direct-java
   if (shouldProvideSpark) {
     gradleRun library.java.spark_streaming
     gradleRun library.java.spark_core, {
       exclude group:"org.slf4j", module:"jul-to-slf4j"
     }
 
-    // TODO: pre-Gradle this was excluded in the SparkRunner overall, in Gradle it is
-    // only excluded in the testRuntimeClasspath.
-    gradleRun project(path: ":beam-sdks-java-core", configuration: "shadow"), {
-      exclude group: "org.slf4j", module: "slf4j-jdk14"
-    }
-  }
-}
-
-if (shouldProvideSpark) {
-  configurations.gradleRun {
     // Using Spark runner causes a StackOverflowError if slf4j-jdk14 is on the classpath
     exclude group: "org.slf4j", module: "slf4j-jdk14"
   }
@@ -104,8 +94,8 @@ test {
 //
 // Parameters:
 //   -Pnexmark.runner
-//       Specify a runner subproject, such as ":runners:spark" or ":runners:flink"
-//       Defaults to ":runners:direct-java"
+//       Specify a runner subproject, such as ":beam-runners-spark" or ":beam-runners-flink"
+//       Defaults to ":beam-runners-direct-java"
 //
 //   -Pnexmark.args
 //       Specify the command line for invoking org.apache.beam.sdk.nexmark.Main
