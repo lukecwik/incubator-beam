@@ -32,12 +32,7 @@ def nexmarkRunnerProperty = "nexmark.runner"
 def nexmarkRunnerDependency = (project.hasProperty(nexmarkRunnerProperty)
         ? project.getProperty(nexmarkRunnerProperty)
         : ":beam-runners-direct-java")
-
-
-// When running using the Spark runner, provide a version of Apache Spark
-def nexmarkProvideSparkProperty = "nexmark.provideSpark"
-def shouldProvideSpark = project.hasProperty(nexmarkProvideSparkProperty) &&
-    project.getProperty(nexmarkProvideSparkProperty).toBoolean()
+def shouldProvideSpark = ":beam-runners-spark".equals(nexmarkRunnerDependency)
 
 configurations {
   // A configuration for running the Nexmark launcher directly from Gradle, which
@@ -80,7 +75,11 @@ dependencies {
     gradleRun library.java.spark_core, {
       exclude group:"org.slf4j", module:"jul-to-slf4j"
     }
+  }
+}
 
+if (shouldProvideSpark) {
+  configurations.gradleRun {
     // Using Spark runner causes a StackOverflowError if slf4j-jdk14 is on the classpath
     exclude group: "org.slf4j", module: "slf4j-jdk14"
   }
@@ -99,12 +98,8 @@ test {
 //
 //   -Pnexmark.args
 //       Specify the command line for invoking org.apache.beam.sdk.nexmark.Main
-//
-//   -Pnexmark.provideSpark
-//       Add Apache Spark to the classpath. The version is the same used to build the SparkRunner
 task run(type: JavaExec) {
   main = "org.apache.beam.sdk.nexmark.Main"
   classpath = configurations.gradleRun
   args nexmarkArgs
 }
-
