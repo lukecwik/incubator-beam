@@ -87,32 +87,42 @@ public class BeamFnDataGrpcClientTest {
   private static final BeamFnApi.Elements ELEMENTS_B_1;
   static {
     try {
-    ELEMENTS_A_1 = BeamFnApi.Elements.newBuilder()
-        .addData(BeamFnApi.Elements.Data.newBuilder()
-            .setInstructionReference(ENDPOINT_A.getInstructionId())
-            .setTarget(ENDPOINT_A.getTarget())
-            .setData(ByteString.copyFrom(encodeToByteArray(CODER, valueInGlobalWindow("ABC")))
-                .concat(ByteString.copyFrom(encodeToByteArray(CODER, valueInGlobalWindow("DEF"))))))
-        .build();
-    ELEMENTS_A_2 = BeamFnApi.Elements.newBuilder()
-        .addData(BeamFnApi.Elements.Data.newBuilder()
-            .setInstructionReference(ENDPOINT_A.getInstructionId())
-            .setTarget(ENDPOINT_A.getTarget())
-            .setData(ByteString.copyFrom(encodeToByteArray(CODER, valueInGlobalWindow("GHI")))))
-        .addData(BeamFnApi.Elements.Data.newBuilder()
-            .setInstructionReference(ENDPOINT_A.getInstructionId())
-            .setTarget(ENDPOINT_A.getTarget()))
-        .build();
-    ELEMENTS_B_1 = BeamFnApi.Elements.newBuilder()
-        .addData(BeamFnApi.Elements.Data.newBuilder()
-            .setInstructionReference(ENDPOINT_B.getInstructionId())
-            .setTarget(ENDPOINT_B.getTarget())
-            .setData(ByteString.copyFrom(encodeToByteArray(CODER, valueInGlobalWindow("JKL")))
-                .concat(ByteString.copyFrom(encodeToByteArray(CODER, valueInGlobalWindow("MNO"))))))
-        .addData(BeamFnApi.Elements.Data.newBuilder()
-            .setInstructionReference(ENDPOINT_B.getInstructionId())
-            .setTarget(ENDPOINT_B.getTarget()))
-        .build();
+      ByteString.Output outputA = ByteString.newOutput();
+      CODER.encode(valueInGlobalWindow("ABC"), outputA);
+      CODER.encode(valueInGlobalWindow("DEF"), outputA);
+      CODER.encode(valueInGlobalWindow("GHI"), outputA);
+      ByteString encodedA = outputA.toByteString();
+
+      ELEMENTS_A_1 = BeamFnApi.Elements.newBuilder()
+          .addData(BeamFnApi.Elements.Data.newBuilder()
+              .setInstructionReference(ENDPOINT_A.getInstructionId())
+              .setTarget(ENDPOINT_A.getTarget())
+              .setData(encodedA.substring(0, 20)))
+          .build();
+      ELEMENTS_A_2 = BeamFnApi.Elements.newBuilder()
+          .addData(BeamFnApi.Elements.Data.newBuilder()
+              .setInstructionReference(ENDPOINT_A.getInstructionId())
+              .setTarget(ENDPOINT_A.getTarget())
+              .setData(encodedA.substring(20)))
+          .addData(BeamFnApi.Elements.Data.newBuilder()
+              .setInstructionReference(ENDPOINT_A.getInstructionId())
+              .setTarget(ENDPOINT_A.getTarget()))
+          .build();
+
+      ByteString.Output outputB = ByteString.newOutput();
+      CODER.encode(valueInGlobalWindow("JKL"), outputB);
+      CODER.encode(valueInGlobalWindow("MNO"), outputB);
+      ByteString encodedB = outputB.toByteString();
+
+      ELEMENTS_B_1 = BeamFnApi.Elements.newBuilder()
+          .addData(BeamFnApi.Elements.Data.newBuilder()
+              .setInstructionReference(ENDPOINT_B.getInstructionId())
+              .setTarget(ENDPOINT_B.getTarget())
+              .setData(encodedB))
+          .addData(BeamFnApi.Elements.Data.newBuilder()
+              .setInstructionReference(ENDPOINT_B.getInstructionId())
+              .setTarget(ENDPOINT_B.getTarget()))
+          .build();
     } catch (Exception e) {
       throw new ExceptionInInitializerError(e);
     }

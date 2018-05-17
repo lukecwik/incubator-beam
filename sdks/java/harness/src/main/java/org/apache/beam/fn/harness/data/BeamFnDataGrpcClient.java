@@ -20,6 +20,8 @@ package org.apache.beam.fn.harness.data;
 
 import io.grpc.ManagedChannel;
 import io.grpc.stub.StreamObserver;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.function.BiFunction;
@@ -29,6 +31,7 @@ import org.apache.beam.model.fnexecution.v1.BeamFnDataGrpc;
 import org.apache.beam.model.pipeline.v1.Endpoints;
 import org.apache.beam.model.pipeline.v1.Endpoints.ApiServiceDescriptor;
 import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.fn.data.BeamFnDataBufferingOutboundObserver;
 import org.apache.beam.sdk.fn.data.BeamFnDataGrpcMultiplexer;
 import org.apache.beam.sdk.fn.data.BeamFnDataInboundObserver;
 import org.apache.beam.sdk.fn.data.CloseableFnDataReceiver;
@@ -36,6 +39,7 @@ import org.apache.beam.sdk.fn.data.FnDataReceiver;
 import org.apache.beam.sdk.fn.data.InboundDataClient;
 import org.apache.beam.sdk.fn.data.LogicalEndpoint;
 import org.apache.beam.sdk.fn.stream.StreamObserverFactory.StreamObserverClientFactory;
+import org.apache.beam.sdk.options.ExperimentalOptions;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.slf4j.Logger;
@@ -47,6 +51,7 @@ import org.slf4j.LoggerFactory;
  * <p>TODO: Handle closing clients that are currently not a consumer nor are being consumed.
  */
 public class BeamFnDataGrpcClient implements BeamFnDataClient {
+  private static final String BEAM_FN_API_DATA_BUFFER_LIMIT = "beam_fn_api_data_buffer_limit=";
   private static final Logger LOG = LoggerFactory.getLogger(BeamFnDataGrpcClient.class);
 
   private final ConcurrentMap<Endpoints.ApiServiceDescriptor, BeamFnDataGrpcMultiplexer> cache;
@@ -116,8 +121,21 @@ public class BeamFnDataGrpcClient implements BeamFnDataClient {
         "Creating output consumer for instruction {} and target {}",
         outputLocation.getInstructionId(),
         outputLocation.getTarget());
-    return new BeamFnDataBufferingOutboundObserver<>(
-        options, outputLocation, coder, client.getOutboundObserver());
+
+    List<String> experiments = options.as(ExperimentalOptions.class).getExperiments();
+    for (String experiment : experiments == null ? Collections.<String>emptyList() : experiments) {
+      if (experiment.startsWith(BEAM_FN_API_DATA_BUFFER_LIMIT)) {
+        BeamFnDataBufferingOutboundObserver.forLocationWithBufferLimit(
+            Integer.parseInt(experiment.substring(BEAM_FN_API_DATA_BUFFER_LIMIT.length())),
+            outputLocation,
+            coder,
+            client.getOutboundObserver());
+      }
+    }
+    return BeamFnDataBufferingOutboundObserver.forLocation(
+        outputLocation,
+        coder,
+        client.getOutboundObserver());
   }
 
   private BeamFnDataGrpcMultiplexer getClientFor(

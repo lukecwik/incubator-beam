@@ -20,12 +20,22 @@ package org.apache.beam.sdk.fn.data;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
+import com.lmax.disruptor.BlockingWaitStrategy;
+import com.lmax.disruptor.EventTranslatorOneArg;
+import com.lmax.disruptor.RingBuffer;
+import com.lmax.disruptor.WaitStrategy;
+import com.lmax.disruptor.dsl.Disruptor;
+import com.lmax.disruptor.dsl.ProducerType;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.function.Consumer;
 import javax.annotation.Nullable;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi;
@@ -112,6 +122,10 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
     inboundObserver.onCompleted();
   }
 
+  private static class DataEvent {
+    private BeamFnApi.Elements.Data data;
+  }
+
   /**
    * A multiplexing {@link StreamObserver} that selects the inbound {@link Consumer} to
    * pass the elements to.
@@ -132,6 +146,33 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
             LOG.debug("Received data for key {} without consumer ready. "
                 + "Waiting for consumer to be registered.", key);
           }
+
+          // Executor that will be used to construct new threads for consumers
+          Executor executor = Executors.newCachedThreadPool();
+
+          // Specify the size of the ring buffer, must be power of 2.
+          int bufferSize = 1024;
+
+          // Construct the Disruptor
+          Disruptor<DataEvent> disruptor = new Disruptor<>(DataEvent::new,
+              bufferSize,
+              Executors.defaultThreadFactory(),
+              ProducerType.SINGLE,
+              new BlockingWaitStrategy());
+
+          // Connect the handler
+          disruptor.handleEventsWith(
+              (DataEvent event, long sequence, boolean endOfBatch) ->
+                  consumer.get().accept(event.data));
+
+          // Start the Disruptor, starts all threads running
+          disruptor.start();
+
+          // Get the ring buffer from the Disruptor to be used for publishing.
+          RingBuffer<DataEvent> ringBuffer = disruptor.getRingBuffer();
+          ringBuffer.publishEvent(
+              (DataEvent event, long sequence, BeamFnApi.Elements.Data data2) -> event.data = data2, data);
+
           consumer.get().accept(data);
           if (data.getData().isEmpty()) {
             consumers.remove(key);

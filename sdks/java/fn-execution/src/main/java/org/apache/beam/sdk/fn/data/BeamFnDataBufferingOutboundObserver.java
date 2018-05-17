@@ -21,8 +21,11 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.ByteString;
 import io.grpc.stub.StreamObserver;
 import java.io.IOException;
+import java.io.OutputStream;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi;
 import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.fn.stream.DataStreams;
+import org.apache.beam.sdk.fn.stream.DataStreams.ElementDelimitedOutputStream;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,22 +36,10 @@ import org.slf4j.LoggerFactory;
  * <p>Encodes individually consumed elements with the provided {@link Coder} producing
  * a single {@link BeamFnApi.Elements} message when the buffer threshold
  * is surpassed.
- *
- * <p>The default buffer threshold can be overridden by specifying the experiment
- * {@code beam_fn_api_data_buffer_limit=<bytes>}
- *
- * <p>TODO: Handle outputting large elements (&gt; 2GiBs). Note that this also applies to the
- * input side as well.
- *
- * <p>TODO: Handle outputting elements that are zero bytes by outputting a single byte as
- * a marker, detect on the input side that no bytes were read and force reading a single byte.
  */
 public class BeamFnDataBufferingOutboundObserver<T>
     implements CloseableFnDataReceiver<WindowedValue<T>> {
-  // TODO: Consider moving this constant out of this class
-  public static final String BEAM_FN_API_DATA_BUFFER_LIMIT = "beam_fn_api_data_buffer_limit=";
-  @VisibleForTesting
-  static final int DEFAULT_BUFFER_LIMIT_BYTES = 1_000_000;
+
   private static final Logger LOG =
       LoggerFactory.getLogger(BeamFnDataBufferingOutboundObserver.class);
 
@@ -57,7 +48,7 @@ public class BeamFnDataBufferingOutboundObserver<T>
       Coder<WindowedValue<T>> coder,
       StreamObserver<BeamFnApi.Elements> outboundObserver) {
     return forLocationWithBufferLimit(
-        DEFAULT_BUFFER_LIMIT_BYTES, endpoint, coder, outboundObserver);
+        DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES, endpoint, coder, outboundObserver);
   }
 
   public static <T> BeamFnDataBufferingOutboundObserver<T> forLocationWithBufferLimit(
@@ -72,23 +63,31 @@ public class BeamFnDataBufferingOutboundObserver<T>
   private long byteCounter;
   private long counter;
   private boolean closed;
-  private final int bufferLimit;
   private final Coder<WindowedValue<T>> coder;
   private final LogicalEndpoint outputLocation;
   private final StreamObserver<BeamFnApi.Elements> outboundObserver;
-  private final ByteString.Output bufferedElements;
+  private final ElementDelimitedOutputStream outputStream;
 
   private BeamFnDataBufferingOutboundObserver(
       int bufferLimit,
       LogicalEndpoint outputLocation,
       Coder<WindowedValue<T>> coder,
       StreamObserver<BeamFnApi.Elements> outboundObserver) {
-    this.bufferLimit = bufferLimit;
     this.outputLocation = outputLocation;
     this.coder = coder;
     this.outboundObserver = outboundObserver;
-    this.bufferedElements = ByteString.newOutput();
+    this.outputStream = DataStreams.outbound(this::transmitChunk, bufferLimit);
     this.closed = false;
+  }
+
+  private void transmitChunk(ByteString bytes) {
+    byteCounter += bytes.size();
+    BeamFnApi.Elements.Builder elements = BeamFnApi.Elements.newBuilder();
+    elements.addDataBuilder()
+        .setInstructionReference(outputLocation.getInstructionId())
+        .setTarget(outputLocation.getTarget())
+        .setData(bytes);
+    outboundObserver.onNext(elements.build());
   }
 
   @Override
@@ -97,8 +96,10 @@ public class BeamFnDataBufferingOutboundObserver<T>
       throw new IllegalStateException("Already closed.");
     }
     closed = true;
-    BeamFnApi.Elements.Builder elements = convertBufferForTransmission();
+    outputStream.close();
+
     // This will add an empty data block representing the end of stream.
+    BeamFnApi.Elements.Builder elements = BeamFnApi.Elements.newBuilder();
     elements.addDataBuilder()
         .setInstructionReference(outputLocation.getInstructionId())
         .setTarget(outputLocation.getTarget());
@@ -117,26 +118,8 @@ public class BeamFnDataBufferingOutboundObserver<T>
     if (closed) {
       throw new IllegalStateException("Already closed.");
     }
-    coder.encode(t, bufferedElements);
     counter += 1;
-    if (bufferedElements.size() >= bufferLimit) {
-      outboundObserver.onNext(convertBufferForTransmission().build());
-    }
-  }
-
-  private BeamFnApi.Elements.Builder convertBufferForTransmission() {
-    BeamFnApi.Elements.Builder elements = BeamFnApi.Elements.newBuilder();
-    if (bufferedElements.size() == 0) {
-      return elements;
-    }
-
-    elements.addDataBuilder()
-        .setInstructionReference(outputLocation.getInstructionId())
-        .setTarget(outputLocation.getTarget())
-        .setData(bufferedElements.toByteString());
-
-    byteCounter += bufferedElements.size();
-    bufferedElements.reset();
-    return elements;
+    coder.encode(t, outputStream);
+    outputStream.delimitElement();
   }
 }

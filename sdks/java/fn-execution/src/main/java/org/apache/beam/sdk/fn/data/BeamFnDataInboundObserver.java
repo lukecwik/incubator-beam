@@ -17,10 +17,17 @@
  */
 package org.apache.beam.sdk.fn.data;
 
+import com.google.protobuf.ByteString;
 import java.io.InputStream;
+import java.util.Iterator;
+import java.util.NoSuchElementException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.SynchronousQueue;
 import java.util.function.Consumer;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi;
 import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.fn.stream.DataStreams;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +49,9 @@ public class BeamFnDataInboundObserver<T>
   private final FnDataReceiver<WindowedValue<T>> consumer;
   private final Coder<WindowedValue<T>> coder;
   private final InboundDataClient readFuture;
+  private final Future<Void> elementDecodingTask;
+  private final DataStreams.BlockingQueueIterator inboundQueue;
+  private final Iterator<WindowedValue<T>> inputIterator;
   private long byteCounter;
   private long counter;
 
@@ -52,6 +62,12 @@ public class BeamFnDataInboundObserver<T>
     this.coder = coder;
     this.consumer = consumer;
     this.readFuture = readFuture;
+    this.inboundQueue = new DataStreams.BlockingQueueIterator(new SynchronousQueue());
+    this.inputIterator =
+        new DataStreams.DataStreamDecoder(coder, DataStreams.inbound(inboundQueue));
+    // TODO: Allow passing in a thread pool.
+    this.elementDecodingTask =
+        Executors.newSingleThreadExecutor().submit(this::decodeAndProcessElements);
   }
 
   @Override
@@ -68,17 +84,13 @@ public class BeamFnDataInboundObserver<T>
             t.getTarget(),
             counter,
             byteCounter);
+        inboundQueue.close();
         readFuture.complete();
         return;
       }
 
       byteCounter += t.getData().size();
-      InputStream inputStream = t.getData().newInput();
-      while (inputStream.available() > 0) {
-        counter += 1;
-        WindowedValue<T> value = coder.decode(inputStream);
-        consumer.accept(value);
-      }
+      inboundQueue.accept(t);
     } catch (Exception e) {
       readFuture.fail(e);
     }
@@ -107,5 +119,17 @@ public class BeamFnDataInboundObserver<T>
   @Override
   public void fail(Throwable t) {
     readFuture.fail(t);
+  }
+
+  private Void decodeAndProcessElements() throws Exception {
+    try {
+      while (!readFuture.isDone() && inputIterator.hasNext()) {
+        counter += 1;
+        consumer.accept(inputIterator.next());
+      }
+    } finally {
+      inboundQueue.close();
+    }
+    return null;
   }
 }

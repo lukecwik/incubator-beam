@@ -25,6 +25,7 @@ import static org.junit.Assert.fail;
 
 import com.google.common.collect.Iterables;
 import com.google.protobuf.ByteString;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -36,6 +37,7 @@ import org.apache.beam.model.fnexecution.v1.BeamFnApi.Target;
 import org.apache.beam.sdk.coders.ByteArrayCoder;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.LengthPrefixCoder;
+import org.apache.beam.sdk.fn.stream.DataStreams;
 import org.apache.beam.sdk.fn.test.TestStreams;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.junit.Test;
@@ -67,44 +69,53 @@ public class BeamFnDataBufferingOutboundObserverTest {
                 .withOnCompleted(setBooleanToTrue(onCompletedWasCalled))
                 .build());
 
+    ByteString.Output output = ByteString.newOutput();
+    CODER.encode(valueInGlobalWindow(
+        new byte[DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES - 50]), output);
+    CODER.encode(valueInGlobalWindow(new byte[50]), output);
+    CODER.encode(valueInGlobalWindow(
+        new byte[DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES - 50]), output);
+    CODER.encode(valueInGlobalWindow(new byte[50]), output);
+    ByteString expectedData = output.toByteString();
+
     // Test that nothing is emitted till the default buffer size is surpassed.
     consumer.accept(
         valueInGlobalWindow(
-            new byte[BeamFnDataBufferingOutboundObserver.DEFAULT_BUFFER_LIMIT_BYTES - 50]));
+            new byte[DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES - 50]));
     assertThat(values, empty());
 
     // Test that when we cross the buffer, we emit.
     consumer.accept(valueInGlobalWindow(new byte[50]));
     assertEquals(
         messageWithData(
-            new byte[BeamFnDataBufferingOutboundObserver.DEFAULT_BUFFER_LIMIT_BYTES - 50],
-            new byte[50]),
+            expectedData.substring(0, DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES)),
         Iterables.get(values, 0));
 
     // Test that nothing is emitted till the default buffer size is surpassed after a reset
     consumer.accept(
         valueInGlobalWindow(
-            new byte[BeamFnDataBufferingOutboundObserver.DEFAULT_BUFFER_LIMIT_BYTES - 50]));
+            new byte[DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES - 50]));
     assertEquals(1, values.size());
 
     // Test that when we cross the buffer, we emit.
     consumer.accept(valueInGlobalWindow(new byte[50]));
     assertEquals(
-        messageWithData(
-            new byte[BeamFnDataBufferingOutboundObserver.DEFAULT_BUFFER_LIMIT_BYTES - 50],
-            new byte[50]),
+        messageWithData(expectedData.substring(
+            DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES,
+            2 * DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES)),
         Iterables.get(values, 1));
 
     // Test that when we close with an empty buffer we only have one end of stream
     consumer.close();
-    assertEquals(messageWithData(),
+    assertEquals(messageWithData(
+        expectedData.substring(2 * DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES)),
         Iterables.get(values, 2));
 
     // Test that we can't write to a closed stream.
     try {
       consumer.accept(
           valueInGlobalWindow(
-              new byte[BeamFnDataBufferingOutboundObserver.DEFAULT_BUFFER_LIMIT_BYTES - 50]));
+              new byte[DataStreams.DEFAULT_OUTBOUND_BUFFER_LIMIT_BYTES - 50]));
       fail("Writing after close should be prohibited.");
     } catch (IllegalStateException exn) {
       // expected
@@ -132,6 +143,12 @@ public class BeamFnDataBufferingOutboundObserverTest {
                 .withOnCompleted(setBooleanToTrue(onCompletedWasCalled))
                 .build());
 
+    ByteString.Output output = ByteString.newOutput();
+    CODER.encode(valueInGlobalWindow(new byte[51]), output);
+    CODER.encode(valueInGlobalWindow(new byte[49]), output);
+    CODER.encode(valueInGlobalWindow(new byte[1]), output);
+    ByteString expectedData = output.toByteString();
+
     // Test that nothing is emitted till the default buffer size is surpassed.
     consumer.accept(valueInGlobalWindow(new byte[51]));
     assertThat(values, empty());
@@ -139,7 +156,7 @@ public class BeamFnDataBufferingOutboundObserverTest {
     // Test that when we cross the buffer, we emit.
     consumer.accept(valueInGlobalWindow(new byte[49]));
     assertEquals(
-        messageWithData(new byte[51], new byte[49]),
+        messageWithData(expectedData.substring(0, 100)),
         Iterables.get(values, 0));
 
     // Test that when we close we empty the value, and then the stream terminator as part
@@ -147,24 +164,19 @@ public class BeamFnDataBufferingOutboundObserverTest {
     consumer.accept(valueInGlobalWindow(new byte[1]));
     consumer.close();
     assertEquals(
-        BeamFnApi.Elements.newBuilder(messageWithData(new byte[1]))
-            .addData(BeamFnApi.Elements.Data.newBuilder()
-                .setInstructionReference(OUTPUT_LOCATION.getInstructionId())
-                .setTarget(OUTPUT_LOCATION.getTarget()))
-            .build(),
+        messageWithData(expectedData.substring(100)),
         Iterables.get(values, 1));
+    assertEquals(
+        messageWithData(ByteString.EMPTY),
+        Iterables.get(values, 2));
   }
 
-  private static BeamFnApi.Elements messageWithData(byte[] ... datum) throws IOException {
-    ByteString.Output output = ByteString.newOutput();
-    for (byte[] data : datum) {
-      CODER.encode(valueInGlobalWindow(data), output);
-    }
+  private static BeamFnApi.Elements messageWithData(ByteString data) throws IOException {
     return BeamFnApi.Elements.newBuilder()
         .addData(BeamFnApi.Elements.Data.newBuilder()
             .setInstructionReference(OUTPUT_LOCATION.getInstructionId())
             .setTarget(OUTPUT_LOCATION.getTarget())
-            .setData(output.toByteString()))
+            .setData(data))
         .build();
   }
 
