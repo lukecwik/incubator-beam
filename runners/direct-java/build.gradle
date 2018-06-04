@@ -21,7 +21,8 @@ import groovy.json.JsonOutput
 //the list used for defining include set and the set of project level dependencies
 def dependOnProjects = [":beam-model-pipeline", ":beam-runners-core-construction-java",
                         ":beam-runners-core-java", ":beam-runners-local-java-core",
-                        ":beam-runners-java-fn-execution", ":beam-sdks-java-fn-execution"]
+                        ":beam-runners-java-fn-execution", ":beam-sdks-java-fn-execution",
+                        ":beam-sdks-java-extensions-protobuf"]
 
 apply from: project(":").file("build_rules.gradle")
 applyJavaNature(shadowClosure: DEFAULT_SHADOW_CLOSURE << {
@@ -40,6 +41,7 @@ applyJavaNature(shadowClosure: DEFAULT_SHADOW_CLOSURE << {
   relocate "org.apache.beam.runners.fnexecution", getJavaRelocatedPath("runners.fnexecution")
   relocate "org.apache.beam.sdk.fn", getJavaRelocatedPath("sdk.fn")
   relocate "org.apache.beam.runners.local", getJavaRelocatedPath("runners.local")
+  relocate "org.apache.beam.sdk.extensions.protobuf", getJavaRelocatedPath("sdk.extensions.protobuf")
 })
 
 description = "Apache Beam :: Runners :: Direct Java"

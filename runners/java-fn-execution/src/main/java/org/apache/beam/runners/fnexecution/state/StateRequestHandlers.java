@@ -20,22 +20,28 @@ package org.apache.beam.runners.fnexecution.state;
 
 import static com.google.common.base.Preconditions.checkState;
 
+import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.concurrent.ThreadSafe;
+import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateAppendResponse;
+import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateClearResponse;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateGetResponse;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateKey;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateKey.TypeCase;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateRequest;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.StateResponse;
+import org.apache.beam.runners.fnexecution.control.ProcessBundleDescriptors.BagUserStateSpec;
 import org.apache.beam.runners.fnexecution.control.ProcessBundleDescriptors.ExecutableProcessBundleDescriptor;
 import org.apache.beam.runners.fnexecution.control.ProcessBundleDescriptors.MultimapSideInputSpec;
 import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.extensions.protobuf.ByteStringCoder;
 import org.apache.beam.sdk.fn.stream.DataStreams;
 import org.apache.beam.sdk.fn.stream.DataStreams.ElementDelimitedOutputStream;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
@@ -166,6 +172,44 @@ public class StateRequestHandlers {
   }
 
   /**
+   * Returns a {@link StateRequestHandler} which delegates to the supplied handler depending
+   * on the {@link StateRequest}s {@link StateKey.TypeCase type}.
+   *
+   * <p>An exception is thrown if a corresponding handler is not found.
+   */
+  public static StateRequestHandler delegateBasedUponType(
+      EnumMap<StateKey.TypeCase, StateRequestHandler> handlers) {
+    return new StateKeyTypeDelegatingStateRequestHandler(handlers);
+  }
+
+  /**
+   * A {@link StateRequestHandler} which delegates to the supplied handler depending
+   * on the {@link StateRequest}s {@link StateKey.TypeCase type}.
+   *
+   * <p>An exception is thrown if a corresponding handler is not found.
+   */
+  static class StateKeyTypeDelegatingStateRequestHandler implements StateRequestHandler {
+    private final EnumMap<TypeCase, StateRequestHandler> handlers;
+
+    StateKeyTypeDelegatingStateRequestHandler(
+        EnumMap<StateKey.TypeCase, StateRequestHandler> handlers) {
+      this.handlers = handlers;
+    }
+
+    @Override
+    public CompletionStage<StateResponse.Builder> handle(StateRequest request) throws Exception {
+      return handlers.getOrDefault(request.getStateKey().getTypeCase(), this::handlerNotFound)
+          .handle(request);
+    }
+
+    private CompletionStage<StateResponse.Builder> handlerNotFound(StateRequest request) {
+      CompletableFuture<StateResponse.Builder> rval = new CompletableFuture<>();
+      rval.completeExceptionally(new IllegalStateException());
+      return rval;
+    }
+  }
+
+  /**
    * Returns an adapter which converts a {@link MultimapSideInputHandlerFactory} to a
    * {@link StateRequestHandler}.
    *
@@ -192,14 +236,14 @@ public class StateRequestHandlers {
       implements StateRequestHandler {
 
     private final ExecutableProcessBundleDescriptor processBundleDescriptor;
-    private final MultimapSideInputHandlerFactory multimapSideInputHandlerFactory;
+    private final MultimapSideInputHandlerFactory handlerFactory;
     private final ConcurrentHashMap<MultimapSideInputSpec, MultimapSideInputHandler> cache;
 
     StateRequestHandlerToMultimapSideInputHandlerFactoryAdapter(
         ExecutableProcessBundleDescriptor processBundleDescriptor,
-        MultimapSideInputHandlerFactory multimapSideInputHandlerFactory) {
+        MultimapSideInputHandlerFactory handlerFactory) {
       this.processBundleDescriptor = processBundleDescriptor;
-      this.multimapSideInputHandlerFactory = multimapSideInputHandlerFactory;
+      this.handlerFactory = handlerFactory;
       this.cache = new ConcurrentHashMap<>();
     }
 
@@ -214,17 +258,22 @@ public class StateRequestHandlers {
             TypeCase.MULTIMAP_SIDE_INPUT);
 
         StateKey.MultimapSideInput stateKey = request.getStateKey().getMultimapSideInput();
-        MultimapSideInputSpec<?, ?, ?> sideInputReferenceSpec =
+        MultimapSideInputSpec<Object, Object, BoundedWindow> referenceSpec =
             processBundleDescriptor.getMultimapSideInputSpecs()
                 .get(stateKey.getPtransformId())
                 .get(stateKey.getSideInputId());
-        MultimapSideInputHandler<?, ?, ?> handler = cache.computeIfAbsent(
-            sideInputReferenceSpec,
+        MultimapSideInputHandler<Object, Object, BoundedWindow> handler = cache.computeIfAbsent(
+            referenceSpec,
             this::createHandler);
+
+        // TODO: Migrate to using the ByteStringCoder everywhere for user types and values
+        // to reduce the amount of byte array copying.
+        Object key = referenceSpec.keyCoder().decode(stateKey.getKey().newInput());
+        BoundedWindow window = referenceSpec.windowCoder().decode(stateKey.getWindow().newInput());
 
         switch (request.getRequestCase()) {
           case GET:
-            return handleGetRequest(request, handler);
+            return handleGetRequest(request, key, window, referenceSpec.valueCoder(), handler);
           case APPEND:
           case CLEAR:
           default:
@@ -238,28 +287,23 @@ public class StateRequestHandlers {
       }
     }
 
-    private <K, V, W extends BoundedWindow> CompletionStage<StateResponse.Builder> handleGetRequest(
-        StateRequest request, MultimapSideInputHandler<K, V, W> handler) throws Exception {
+    private static <K, V, W extends BoundedWindow> CompletionStage<StateResponse.Builder>
+    handleGetRequest(
+        StateRequest request,
+        K key,
+        W window,
+        Coder<V> valueCoder,
+        MultimapSideInputHandler<K, V, W> handler) throws Exception {
       // TODO: Add support for continuation tokens when handling state if the handler
       // returned a {@link Reiterable}.
       checkState(request.getGet().getContinuationToken().isEmpty(),
           "Continuation tokens are unsupported.");
 
-      StateKey.MultimapSideInput stateKey = request.getStateKey().getMultimapSideInput();
-
-      MultimapSideInputSpec<K, V, W> sideInputReferenceSpec =
-          processBundleDescriptor.getMultimapSideInputSpecs()
-              .get(stateKey.getPtransformId())
-              .get(stateKey.getSideInputId());
-
-      K key = sideInputReferenceSpec.keyCoder().decode(stateKey.getKey().newInput());
-      W window = sideInputReferenceSpec.windowCoder().decode(stateKey.getWindow().newInput());
-
       Iterable<V> values = handler.get(key, window);
       List<ByteString> encodedValues = new ArrayList<>();
       ElementDelimitedOutputStream outputStream = DataStreams.outbound(encodedValues::add);
       for (V value : values) {
-        sideInputReferenceSpec.valueCoder().encode(value, outputStream);
+        valueCoder.encode(value, outputStream);
         outputStream.delimitElement();
       }
       outputStream.close();
@@ -275,9 +319,160 @@ public class StateRequestHandlers {
 
     private <K, V, W extends BoundedWindow> MultimapSideInputHandler<K, V, W> createHandler(
         MultimapSideInputSpec cacheKey) {
-      return multimapSideInputHandlerFactory.forSideInput(
+      return handlerFactory.forSideInput(
           cacheKey.transformId(),
           cacheKey.sideInputId(),
+          cacheKey.keyCoder(),
+          cacheKey.valueCoder(),
+          cacheKey.windowCoder());
+    }
+  }
+
+  /**
+   * Returns an adapter which converts a {@link BagUserStateHandlerFactory} to a
+   * {@link StateRequestHandler}.
+   *
+   * <p>The {@link MultimapSideInputHandlerFactory} is required to handle all multimap side inputs
+   * contained within the {@link ExecutableProcessBundleDescriptor}. See
+   * {@link ExecutableProcessBundleDescriptor#getMultimapSideInputSpecs} for the set of multimap
+   * side inputs that are contained.
+   *
+   * <p>Instances of {@link MultimapSideInputHandler}s returned by the
+   * {@link MultimapSideInputHandlerFactory} are cached.
+   */
+  public static StateRequestHandler forBagUserStateHandlerFactory(
+      ExecutableProcessBundleDescriptor processBundleDescriptor,
+      BagUserStateHandlerFactory bagUserStateHandlerFactory) {
+    return new ByteStringStateRequestHandlerToBagUserStateHandlerFactoryAdapter(
+        processBundleDescriptor, bagUserStateHandlerFactory);
+  }
+
+  /**
+   * An adapter which converts {@link BagUserStateHandlerFactory} to
+   * {@link StateRequestHandler}.
+   */
+  static class ByteStringStateRequestHandlerToBagUserStateHandlerFactoryAdapter
+      implements StateRequestHandler {
+
+    private final ExecutableProcessBundleDescriptor processBundleDescriptor;
+    private final BagUserStateHandlerFactory handlerFactory;
+    private final ConcurrentHashMap<BagUserStateSpec, BagUserStateHandler> cache;
+
+    ByteStringStateRequestHandlerToBagUserStateHandlerFactoryAdapter(
+        ExecutableProcessBundleDescriptor processBundleDescriptor,
+        BagUserStateHandlerFactory handlerFactory) {
+      this.processBundleDescriptor = processBundleDescriptor;
+      this.handlerFactory = handlerFactory;
+      this.cache = new ConcurrentHashMap<>();
+    }
+
+    @Override
+    public CompletionStage<StateResponse.Builder> handle(
+        StateRequest request) throws Exception {
+      try {
+        checkState(TypeCase.BAG_USER_STATE.equals(request.getStateKey().getTypeCase()),
+            "Unsupported %s type %s, expected %s",
+            StateRequest.class.getSimpleName(),
+            request.getStateKey().getTypeCase(),
+            TypeCase.BAG_USER_STATE);
+
+        StateKey.BagUserState stateKey = request.getStateKey().getBagUserState();
+        BagUserStateSpec<Object, Object, BoundedWindow> referenceSpec =
+            processBundleDescriptor.getBagUserStateSpecs()
+                .get(stateKey.getPtransformId())
+                .get(stateKey.getUserStateId());
+
+        // Note that by using the ByteStringCoder, we simplify the issue of encoding/decoding the
+        // logical stream because we do not need to maintain knowledge of element boundaries and
+        // instead we rely on the client to be internally consistent. This allows us to just
+        // take the append requests and also to serve them back without internal knowledge.
+        checkState(
+            ((Coder) referenceSpec.keyCoder()) instanceof ByteStringCoder,
+            "This %s only supports the %s as the key coder.",
+            BagUserStateHandlerFactory.class.getSimpleName(),
+            ByteStringCoder.class.getSimpleName());
+        checkState(
+            ((Coder) referenceSpec.valueCoder()) instanceof ByteStringCoder,
+            "This %s only supports the %s as the value coder.",
+            BagUserStateHandlerFactory.class.getSimpleName(),
+            ByteStringCoder.class.getSimpleName());
+
+        BagUserStateHandler<ByteString, ByteString, BoundedWindow> handler = cache.computeIfAbsent(
+            referenceSpec,
+            this::createHandler);
+
+        ByteString key = stateKey.getKey();
+        BoundedWindow window = referenceSpec.windowCoder().decode(stateKey.getWindow().newInput());
+
+        switch (request.getRequestCase()) {
+          case GET:
+            return handleGetRequest(request, key, window, handler);
+          case APPEND:
+            return handleAppendRequest(request, key, window, handler);
+          case CLEAR:
+            return handleClearRequest(request, key, window, handler);
+          default:
+            throw new Exception(String.format(
+                "Unsupported request type %s for user state.", request.getRequestCase()));
+        }
+      } catch (Exception e) {
+        CompletableFuture f = new CompletableFuture();
+        f.completeExceptionally(e);
+        return f;
+      }
+    }
+
+    private static <W extends BoundedWindow> CompletionStage<StateResponse.Builder>
+    handleGetRequest(
+        StateRequest request,
+        ByteString key,
+        W window,
+        BagUserStateHandler<ByteString, ByteString, W> handler) {
+      // TODO: Add support for continuation tokens when handling state if the handler
+      // returned a {@link Reiterable}.
+      checkState(request.getGet().getContinuationToken().isEmpty(),
+          "Continuation tokens are unsupported.");
+
+      return CompletableFuture.completedFuture(
+          StateResponse.newBuilder()
+              .setId(request.getId())
+              .setGet(StateGetResponse.newBuilder()
+                  // Note that this doesn't copy the actual bytes, just the references.
+                  .setData(ByteString.copyFrom(handler.get(key, window)))));
+    }
+
+    private static <W extends BoundedWindow> CompletionStage<StateResponse.Builder>
+    handleAppendRequest(
+        StateRequest request,
+        ByteString key,
+        W window,
+        BagUserStateHandler<ByteString, ByteString, W> handler) {
+      handler.append(key, window, ImmutableList.of(request.getAppend().getData()).iterator());
+      return CompletableFuture.completedFuture(
+          StateResponse.newBuilder()
+              .setId(request.getId())
+              .setAppend(StateAppendResponse.getDefaultInstance()));
+    }
+
+    private static <W extends BoundedWindow> CompletionStage<StateResponse.Builder>
+    handleClearRequest(
+        StateRequest request,
+        ByteString key,
+        W window,
+        BagUserStateHandler<ByteString, ByteString, W> handler) {
+      handler.clear(key, window);
+      return CompletableFuture.completedFuture(
+          StateResponse
+              .newBuilder()
+              .setId(request.getId())
+              .setClear(StateClearResponse.getDefaultInstance()));
+    }
+
+    private <K, V, W extends BoundedWindow> BagUserStateHandler<K, V, W> createHandler(
+        BagUserStateSpec cacheKey) {
+      return handlerFactory.forUserState(
+          cacheKey.transformId(),
+          cacheKey.userStateId(),
           cacheKey.keyCoder(),
           cacheKey.valueCoder(),
           cacheKey.windowCoder());
