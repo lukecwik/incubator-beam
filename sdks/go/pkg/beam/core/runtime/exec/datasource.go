@@ -28,11 +28,12 @@ import (
 
 // DataSource is a Root execution unit.
 type DataSource struct {
-	UID    UnitID
-	Port   Port
-	Target Target
-	Coder  *coder.Coder
-	Out    Node
+	UID                UnitID
+	Port               Port
+	TransformReference string
+	OutputName         string
+	Coder              *coder.Coder
+	Out                Node
 
 	sid    StreamID
 	source DataReader
@@ -49,7 +50,7 @@ func (n *DataSource) Up(ctx context.Context) error {
 }
 
 func (n *DataSource) StartBundle(ctx context.Context, id string, data DataManager) error {
-	n.sid = StreamID{Port: n.Port, Target: n.Target, InstID: id}
+	n.sid = StreamID{Port: n.Port, TransformReference: n.TransformReference, InstID: id}
 	n.source = data
 	n.start = time.Now()
 	atomic.StoreInt64(&n.count, 0)
@@ -188,7 +189,7 @@ func (n *DataSource) Down(ctx context.Context) error {
 }
 
 func (n *DataSource) String() string {
-	sid := StreamID{Port: n.Port, Target: n.Target}
+	sid := StreamID{Port: n.Port, TransformReference: n.TransformReference}
 	return fmt.Sprintf("DataSource[%v] Coder:%v Out:%v", sid, n.Coder, n.Out.ID())
 }
 
@@ -203,5 +204,5 @@ func (n *DataSource) Progress() ProgressReportSnapshot {
 	if n == nil {
 		return ProgressReportSnapshot{}
 	}
-	return ProgressReportSnapshot{n.sid.Target.ID, n.sid.Target.Name, atomic.LoadInt64(&n.count)}
+	return ProgressReportSnapshot{n.sid.TransformReference, n.OutputName, atomic.LoadInt64(&n.count)}
 }

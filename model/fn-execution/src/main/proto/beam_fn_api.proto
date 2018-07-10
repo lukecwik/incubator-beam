@@ -570,7 +570,7 @@ message Elements {
     // instruction id.
     string instruction_reference = 1;
 
-    // (Required) A definition representing a consumer or producer of this data.
+    // (Deprecated) A definition representing a consumer or producer of this data.
     // If received by a harness, this represents the consumer within that
     // harness that should consume these bytes. If sent by a harness, this
     // represents the producer of these bytes.
@@ -579,7 +579,7 @@ message Elements {
     //
     // Note that a sending/receiving pair should share the same target
     // identifier.
-    Target target = 2;
+    Target target = 2 [deprecated=true];
 
     // (Optional) Represents a part of a logical byte stream. Elements within
     // the logical byte stream are encoded in the nested context and
@@ -588,6 +588,16 @@ message Elements {
     // An empty data block represents the end of stream for the given
     // instruction and target.
     bytes data = 3;
+
+    // (Required) The id of the PrimitiveTransform which is the target.
+    //
+    // A definition representing a consumer or producer of this data.
+    // If received by a harness, this represents the consumer within that
+    // harness that should consume these bytes. If sent by a harness, this
+    // represents the producer of these bytes.
+    //
+    // Note that a single element may span multiple Data messages.
+    string primitive_transform_reference = 4;
   }
 
   // (Required) A list containing parts of logical byte streams.

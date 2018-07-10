@@ -30,7 +30,6 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.annotation.concurrent.ThreadSafe;
-import org.apache.beam.model.fnexecution.v1.BeamFnApi.Target;
 import org.apache.beam.model.jobmanagement.v1.ArtifactRetrievalServiceGrpc;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Environment;
 import org.apache.beam.runners.core.construction.graph.ExecutableStage;
@@ -256,22 +255,23 @@ public class DockerJobBundleFactory implements JobBundleFactory {
         throws Exception {
       // TODO: Consider having BundleProcessor#newBundle take in an OutputReceiverFactory rather
       // than constructing the receiver map here. Every bundle factory will need this.
-      ImmutableMap.Builder<Target, RemoteOutputReceiver<?>> outputReceivers =
+      ImmutableMap.Builder<String, RemoteOutputReceiver<?>> outputReceivers =
           ImmutableMap.builder();
-      for (Map.Entry<Target, Coder<WindowedValue<?>>> targetCoder :
-          processBundleDescriptor.getOutputTargetCoders().entrySet()) {
-        Target target = targetCoder.getKey();
+      for (Map.Entry<String, Coder<WindowedValue<?>>> targetCoder :
+          processBundleDescriptor.getRemoteOutputCoders().entrySet()) {
+        String remoteTransformReference = targetCoder.getKey();
         Coder<WindowedValue<?>> coder = targetCoder.getValue();
         String bundleOutputPCollection =
             Iterables.getOnlyElement(
                 processBundleDescriptor
                     .getProcessBundleDescriptor()
-                    .getTransformsOrThrow(target.getPrimitiveTransformReference())
+                    .getTransformsOrThrow(remoteTransformReference)
                     .getInputsMap()
                     .values());
         FnDataReceiver<WindowedValue<?>> outputReceiver =
             outputReceiverFactory.create(bundleOutputPCollection);
-        outputReceivers.put(target, RemoteOutputReceiver.of(coder, outputReceiver));
+        outputReceivers.put(
+            remoteTransformReference, RemoteOutputReceiver.of(coder, outputReceiver));
       }
       return processor.newBundle(outputReceivers.build(), stateRequestHandler, progressHandler);
     }

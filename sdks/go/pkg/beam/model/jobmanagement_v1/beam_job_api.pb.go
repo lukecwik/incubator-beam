@@ -57,7 +57,7 @@ func (x JobMessage_MessageImportance) String() string {
 	return proto.EnumName(JobMessage_MessageImportance_name, int32(x))
 }
 func (JobMessage_MessageImportance) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{9, 0}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{9, 0}
 }
 
 type JobState_Enum int32
@@ -107,7 +107,7 @@ func (x JobState_Enum) String() string {
 	return proto.EnumName(JobState_Enum_name, int32(x))
 }
 func (JobState_Enum) EnumDescriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{11, 0}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{11, 0}
 }
 
 // Prepare is a synchronous request that returns a preparationId back
@@ -127,7 +127,7 @@ func (m *PrepareJobRequest) Reset()         { *m = PrepareJobRequest{} }
 func (m *PrepareJobRequest) String() string { return proto.CompactTextString(m) }
 func (*PrepareJobRequest) ProtoMessage()    {}
 func (*PrepareJobRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{0}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{0}
 }
 func (m *PrepareJobRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PrepareJobRequest.Unmarshal(m, b)
@@ -187,7 +187,7 @@ func (m *PrepareJobResponse) Reset()         { *m = PrepareJobResponse{} }
 func (m *PrepareJobResponse) String() string { return proto.CompactTextString(m) }
 func (*PrepareJobResponse) ProtoMessage()    {}
 func (*PrepareJobResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{1}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{1}
 }
 func (m *PrepareJobResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PrepareJobResponse.Unmarshal(m, b)
@@ -248,7 +248,7 @@ func (m *RunJobRequest) Reset()         { *m = RunJobRequest{} }
 func (m *RunJobRequest) String() string { return proto.CompactTextString(m) }
 func (*RunJobRequest) ProtoMessage()    {}
 func (*RunJobRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{2}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{2}
 }
 func (m *RunJobRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RunJobRequest.Unmarshal(m, b)
@@ -293,7 +293,7 @@ func (m *RunJobResponse) Reset()         { *m = RunJobResponse{} }
 func (m *RunJobResponse) String() string { return proto.CompactTextString(m) }
 func (*RunJobResponse) ProtoMessage()    {}
 func (*RunJobResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{3}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{3}
 }
 func (m *RunJobResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_RunJobResponse.Unmarshal(m, b)
@@ -334,7 +334,7 @@ func (m *CancelJobRequest) Reset()         { *m = CancelJobRequest{} }
 func (m *CancelJobRequest) String() string { return proto.CompactTextString(m) }
 func (*CancelJobRequest) ProtoMessage()    {}
 func (*CancelJobRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{4}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{4}
 }
 func (m *CancelJobRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CancelJobRequest.Unmarshal(m, b)
@@ -373,7 +373,7 @@ func (m *CancelJobResponse) Reset()         { *m = CancelJobResponse{} }
 func (m *CancelJobResponse) String() string { return proto.CompactTextString(m) }
 func (*CancelJobResponse) ProtoMessage()    {}
 func (*CancelJobResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{5}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{5}
 }
 func (m *CancelJobResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CancelJobResponse.Unmarshal(m, b)
@@ -414,7 +414,7 @@ func (m *GetJobStateRequest) Reset()         { *m = GetJobStateRequest{} }
 func (m *GetJobStateRequest) String() string { return proto.CompactTextString(m) }
 func (*GetJobStateRequest) ProtoMessage()    {}
 func (*GetJobStateRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{6}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{6}
 }
 func (m *GetJobStateRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetJobStateRequest.Unmarshal(m, b)
@@ -452,7 +452,7 @@ func (m *GetJobStateResponse) Reset()         { *m = GetJobStateResponse{} }
 func (m *GetJobStateResponse) String() string { return proto.CompactTextString(m) }
 func (*GetJobStateResponse) ProtoMessage()    {}
 func (*GetJobStateResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{7}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{7}
 }
 func (m *GetJobStateResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetJobStateResponse.Unmarshal(m, b)
@@ -494,7 +494,7 @@ func (m *JobMessagesRequest) Reset()         { *m = JobMessagesRequest{} }
 func (m *JobMessagesRequest) String() string { return proto.CompactTextString(m) }
 func (*JobMessagesRequest) ProtoMessage()    {}
 func (*JobMessagesRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{8}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{8}
 }
 func (m *JobMessagesRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_JobMessagesRequest.Unmarshal(m, b)
@@ -535,7 +535,7 @@ func (m *JobMessage) Reset()         { *m = JobMessage{} }
 func (m *JobMessage) String() string { return proto.CompactTextString(m) }
 func (*JobMessage) ProtoMessage()    {}
 func (*JobMessage) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{9}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{9}
 }
 func (m *JobMessage) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_JobMessage.Unmarshal(m, b)
@@ -597,7 +597,7 @@ func (m *JobMessagesResponse) Reset()         { *m = JobMessagesResponse{} }
 func (m *JobMessagesResponse) String() string { return proto.CompactTextString(m) }
 func (*JobMessagesResponse) ProtoMessage()    {}
 func (*JobMessagesResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{10}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{10}
 }
 func (m *JobMessagesResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_JobMessagesResponse.Unmarshal(m, b)
@@ -737,7 +737,7 @@ func (m *JobState) Reset()         { *m = JobState{} }
 func (m *JobState) String() string { return proto.CompactTextString(m) }
 func (*JobState) ProtoMessage()    {}
 func (*JobState) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_job_api_1fb9125c215633d2, []int{11}
+	return fileDescriptor_beam_job_api_232c0299d3f2a840, []int{11}
 }
 func (m *JobState) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_JobState.Unmarshal(m, b)
@@ -1080,9 +1080,9 @@ var _JobService_serviceDesc = grpc.ServiceDesc{
 	Metadata: "beam_job_api.proto",
 }
 
-func init() { proto.RegisterFile("beam_job_api.proto", fileDescriptor_beam_job_api_1fb9125c215633d2) }
+func init() { proto.RegisterFile("beam_job_api.proto", fileDescriptor_beam_job_api_232c0299d3f2a840) }
 
-var fileDescriptor_beam_job_api_1fb9125c215633d2 = []byte{
+var fileDescriptor_beam_job_api_232c0299d3f2a840 = []byte{
 	// 954 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xc4, 0x56, 0x4f, 0x6f, 0xe3, 0x44,
 	0x14, 0xaf, 0xd3, 0x34, 0x4d, 0x5e, 0xb7, 0x89, 0x3b, 0xa5, 0x6a, 0x36, 0x02, 0xb4, 0x58, 0x82,

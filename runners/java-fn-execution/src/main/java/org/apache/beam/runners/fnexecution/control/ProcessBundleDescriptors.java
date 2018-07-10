@@ -23,7 +23,6 @@ import static org.apache.beam.runners.core.construction.SyntheticComponents.uniq
 
 import com.google.auto.value.AutoValue;
 import com.google.common.collect.ImmutableTable;
-import com.google.common.collect.Iterables;
 import com.google.protobuf.InvalidProtocolBufferException;
 import java.io.IOException;
 import java.util.Collection;
@@ -32,10 +31,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import org.apache.beam.model.fnexecution.v1.BeamFnApi;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.ProcessBundleDescriptor;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.RemoteGrpcPort;
-import org.apache.beam.model.fnexecution.v1.BeamFnApi.Target;
 import org.apache.beam.model.pipeline.v1.Endpoints.ApiServiceDescriptor;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Components;
@@ -113,7 +110,7 @@ public class ProcessBundleDescriptors {
     RemoteInputDestination<WindowedValue<?>> inputDestination =
         addStageInput(dataEndpoint, stage.getInputPCollection(), components);
 
-    Map<Target, Coder<WindowedValue<?>>> outputTargetCoders =
+    Map<String, Coder<WindowedValue<?>>> outputTargetCoders =
         addStageOutputs(dataEndpoint, stage.getOutputPCollections(), components);
 
     Map<String, Map<String, SideInputSpec>> sideInputSpecs = addSideInputs(stage, components);
@@ -135,15 +132,16 @@ public class ProcessBundleDescriptors {
         bundleDescriptorBuilder.build(), inputDestination, outputTargetCoders, sideInputSpecs);
   }
 
-  private static Map<Target, Coder<WindowedValue<?>>> addStageOutputs(
+  private static Map<String, Coder<WindowedValue<?>>> addStageOutputs(
       ApiServiceDescriptor dataEndpoint,
       Collection<PCollectionNode> outputPCollections,
       Components.Builder components)
       throws IOException {
-    Map<Target, Coder<WindowedValue<?>>> outputTargetCoders = new LinkedHashMap<>();
+    Map<String, Coder<WindowedValue<?>>> outputTargetCoders = new LinkedHashMap<>();
     for (PCollectionNode outputPCollection : outputPCollections) {
-      TargetEncoding targetEncoding = addStageOutput(dataEndpoint, components, outputPCollection);
-      outputTargetCoders.put(targetEncoding.getTarget(), targetEncoding.getCoder());
+      WireEncoding wireEncoding = addStageOutput(dataEndpoint, components, outputPCollection);
+      outputTargetCoders.put(
+          wireEncoding.getPrimitiveTransformReference(), wireEncoding.getCoder());
     }
     return outputTargetCoders;
   }
@@ -169,15 +167,10 @@ public class ProcessBundleDescriptors {
     PTransform inputTransform =
         RemoteGrpcPortRead.readFromPort(inputPort, inputPCollection.getId()).toPTransform();
     components.putTransforms(inputId, inputTransform);
-    return RemoteInputDestination.of(
-        wireCoder,
-        Target.newBuilder()
-            .setPrimitiveTransformReference(inputId)
-            .setName(Iterables.getOnlyElement(inputTransform.getOutputsMap().keySet()))
-            .build());
+    return RemoteInputDestination.of(wireCoder, inputId);
   }
 
-  private static TargetEncoding addStageOutput(
+  private static WireEncoding addStageOutput(
       ApiServiceDescriptor dataEndpoint,
       Components.Builder components,
       PCollectionNode outputPCollection)
@@ -199,12 +192,7 @@ public class ProcessBundleDescriptors {
             components::containsTransforms);
     PTransform outputTransform = outputWrite.toPTransform();
     components.putTransforms(outputId, outputTransform);
-    return new AutoValue_ProcessBundleDescriptors_TargetEncoding(
-        Target.newBuilder()
-            .setPrimitiveTransformReference(outputId)
-            .setName(Iterables.getOnlyElement(outputTransform.getInputsMap().keySet()))
-            .build(),
-        wireCoder);
+    return new AutoValue_ProcessBundleDescriptors_WireEncoding(outputId, wireCoder);
   }
 
   public static Map<String, Map<String, SideInputSpec>> getSideInputs(ExecutableStage stage)
@@ -255,8 +243,8 @@ public class ProcessBundleDescriptors {
   }
 
   @AutoValue
-  abstract static class TargetEncoding {
-    abstract BeamFnApi.Target getTarget();
+  abstract static class WireEncoding {
+    abstract String getPrimitiveTransformReference();
 
     abstract Coder<WindowedValue<?>> getCoder();
   }
@@ -294,7 +282,7 @@ public class ProcessBundleDescriptors {
     public static ExecutableProcessBundleDescriptor of(
         ProcessBundleDescriptor descriptor,
         RemoteInputDestination<WindowedValue<?>> inputDestination,
-        Map<BeamFnApi.Target, Coder<WindowedValue<?>>> outputTargetCoders,
+        Map<String, Coder<WindowedValue<?>>> outputTargetCoders,
         Map<String, Map<String, SideInputSpec>> sideInputSpecs) {
       ImmutableTable.Builder copyOfSideInputSpecs = ImmutableTable.builder();
       for (Map.Entry<String, Map<String, SideInputSpec>> outer : sideInputSpecs.entrySet()) {
@@ -318,10 +306,10 @@ public class ProcessBundleDescriptors {
     public abstract RemoteInputDestination<WindowedValue<?>> getRemoteInputDestination();
 
     /**
-     * Get all of the targets materialized by this {@link ExecutableProcessBundleDescriptor} and the
-     * java {@link Coder} for the wire format of that {@link BeamFnApi.Target}.
+     * Get all of the PTransforms that materialize data by this {@link
+     * ExecutableProcessBundleDescriptor} and the java {@link Coder} for the wire format.
      */
-    public abstract Map<BeamFnApi.Target, Coder<WindowedValue<?>>> getOutputTargetCoders();
+    public abstract Map<String, Coder<WindowedValue<?>>> getRemoteOutputCoders();
 
     /**
      * Get a mapping from PTransform id to side input id to {@link SideInputSpec side inputs} that

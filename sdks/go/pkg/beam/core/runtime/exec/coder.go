@@ -34,21 +34,15 @@ type Port struct {
 	URL string
 }
 
-// Target represents the target of external operations.
-type Target struct {
-	ID   string
-	Name string
-}
-
 // StreamID represents the information needed to identify a data stream.
 type StreamID struct {
-	Port   Port
-	Target Target
-	InstID string
+	Port               Port
+	TransformReference string
+	InstID             string
 }
 
 func (id StreamID) String() string {
-	return fmt.Sprintf("S:%v:[%v:%v]:%v", id.Port.URL, id.Target.ID, id.Target.Name, id.InstID)
+	return fmt.Sprintf("S:%v:%v:%v", id.Port.URL, id.TransformReference, id.InstID)
 }
 
 // DataReader is the interface for reading data elements from a particular stream.

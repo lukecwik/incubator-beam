@@ -38,10 +38,7 @@ func (f *fakeClient) Recv() (*pb.Elements, error) {
 	elemData := pb.Elements_Data{
 		InstructionReference: "inst_ref",
 		Data:                 data,
-		Target: &pb.Target{
-			PrimitiveTransformReference: "ptr",
-			Name: "instruction_name",
-		},
+		PrimitiveTransformReference: "ptr",
 	}
 
 	msg := pb.Elements{}
@@ -85,7 +82,7 @@ func TestDataChannelTerminateOnClose(t *testing.T) {
 		t.Errorf("Unexpected error in makeDataChannel: %v", err)
 	}
 
-	r, err := c.OpenRead(context.Background(), exec.StreamID{Port: exec.Port{URL: ""}, Target: exec.Target{ID: "ptr", Name: "instruction_name"}, InstID: "inst_ref"})
+	r, err := c.OpenRead(context.Background(), exec.StreamID{Port: exec.Port{URL: ""}, TransformReference: "ptr", InstID: "inst_ref"})
 	var read = make([]byte, 4)
 
 	// We don't read up all the buffered data, but immediately close the reader.

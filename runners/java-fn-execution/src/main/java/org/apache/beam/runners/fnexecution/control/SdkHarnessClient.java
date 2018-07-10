@@ -30,7 +30,6 @@ import org.apache.beam.model.fnexecution.v1.BeamFnApi.ProcessBundleDescriptor;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.ProcessBundleRequest;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.ProcessBundleResponse;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi.RegisterResponse;
-import org.apache.beam.model.fnexecution.v1.BeamFnApi.Target;
 import org.apache.beam.model.pipeline.v1.Endpoints;
 import org.apache.beam.runners.fnexecution.data.FnDataService;
 import org.apache.beam.runners.fnexecution.data.RemoteInputDestination;
@@ -97,7 +96,7 @@ public class SdkHarnessClient implements AutoCloseable {
      * }</pre>
      */
     public ActiveBundle<T> newBundle(
-        Map<BeamFnApi.Target, RemoteOutputReceiver<?>> outputReceivers,
+        Map<String, RemoteOutputReceiver<?>> outputReceivers,
         BundleProgressHandler progressHandler) {
       return newBundle(
           outputReceivers,
@@ -126,7 +125,7 @@ public class SdkHarnessClient implements AutoCloseable {
      * }</pre>
      */
     public ActiveBundle<T> newBundle(
-        Map<BeamFnApi.Target, RemoteOutputReceiver<?>> outputReceivers,
+        Map<String, RemoteOutputReceiver<?>> outputReceivers,
         StateRequestHandler stateRequestHandler,
         BundleProgressHandler progressHandler) {
       String bundleId = idGenerator.getId();
@@ -148,9 +147,8 @@ public class SdkHarnessClient implements AutoCloseable {
 
       CompletionStage<BeamFnApi.ProcessBundleResponse> specificResponse =
           genericResponse.thenApply(InstructionResponse::getProcessBundle);
-      Map<BeamFnApi.Target, InboundDataClient> outputClients = new HashMap<>();
-      for (Map.Entry<BeamFnApi.Target, RemoteOutputReceiver<?>> targetReceiver :
-          outputReceivers.entrySet()) {
+      Map<String, InboundDataClient> outputClients = new HashMap<>();
+      for (Map.Entry<String, RemoteOutputReceiver<?>> targetReceiver : outputReceivers.entrySet()) {
         InboundDataClient outputClient =
             attachReceiver(
                 bundleId,
@@ -161,7 +159,8 @@ public class SdkHarnessClient implements AutoCloseable {
 
       CloseableFnDataReceiver<WindowedValue<T>> dataReceiver =
           fnApiDataService.send(
-              LogicalEndpoint.of(bundleId, remoteInput.getTarget()), remoteInput.getCoder());
+              LogicalEndpoint.of(bundleId, remoteInput.getPrimitiveTransformReference()),
+              remoteInput.getCoder());
 
       return new ActiveBundle<>(
           bundleId,
@@ -174,10 +173,12 @@ public class SdkHarnessClient implements AutoCloseable {
 
     private <OutputT> InboundDataClient attachReceiver(
         String bundleId,
-        BeamFnApi.Target target,
+        String primitiveTransformReference,
         RemoteOutputReceiver<WindowedValue<OutputT>> receiver) {
       return fnApiDataService.receive(
-          LogicalEndpoint.of(bundleId, target), receiver.getCoder(), receiver.getReceiver());
+          LogicalEndpoint.of(bundleId, primitiveTransformReference),
+          receiver.getCoder(),
+          receiver.getReceiver());
     }
   }
 
@@ -186,7 +187,7 @@ public class SdkHarnessClient implements AutoCloseable {
     private final String bundleId;
     private final CompletionStage<BeamFnApi.ProcessBundleResponse> response;
     private final CloseableFnDataReceiver<WindowedValue<InputT>> inputReceiver;
-    private final Map<BeamFnApi.Target, InboundDataClient> outputClients;
+    private final Map<String, InboundDataClient> outputClients;
     private final StateDelegator.Registration stateRegistration;
     private final BundleProgressHandler progressHandler;
 
@@ -194,7 +195,7 @@ public class SdkHarnessClient implements AutoCloseable {
         String bundleId,
         CompletionStage<ProcessBundleResponse> response,
         CloseableFnDataReceiver<WindowedValue<InputT>> inputReceiver,
-        Map<Target, InboundDataClient> outputClients,
+        Map<String, InboundDataClient> outputClients,
         Registration stateRegistration,
         BundleProgressHandler progressHandler) {
       this.bundleId = bundleId;

@@ -100,13 +100,13 @@ public class BeamFnDataBufferingOutboundObserver<T>
     elements
         .addDataBuilder()
         .setInstructionReference(outputLocation.getInstructionId())
-        .setTarget(outputLocation.getTarget());
+        .setPrimitiveTransformReference(outputLocation.getPrimitiveTransformReference());
 
     LOG.debug(
         "Closing stream for instruction {} and "
-            + "target {} having transmitted {} values {} bytes",
+            + "transform {} having transmitted {} values {} bytes",
         outputLocation.getInstructionId(),
-        outputLocation.getTarget(),
+        outputLocation.getPrimitiveTransformReference(),
         counter,
         byteCounter);
     outboundObserver.onNext(elements.build());
@@ -133,7 +133,7 @@ public class BeamFnDataBufferingOutboundObserver<T>
     elements
         .addDataBuilder()
         .setInstructionReference(outputLocation.getInstructionId())
-        .setTarget(outputLocation.getTarget())
+        .setPrimitiveTransformReference(outputLocation.getPrimitiveTransformReference())
         .setData(bufferedElements.toByteString());
 
     byteCounter += bufferedElements.size();

@@ -150,7 +150,7 @@ func (c *DataChannel) read(ctx context.Context) {
 		// to reduce lock contention.
 
 		for _, elm := range msg.GetData() {
-			id := exec.StreamID{Port: c.port, Target: exec.Target{ID: elm.GetTarget().PrimitiveTransformReference, Name: elm.GetTarget().GetName()}, InstID: elm.GetInstructionReference()}
+			id := exec.StreamID{Port: c.port, TransformReference: elm.PrimitiveTransformReference, InstID: elm.GetInstructionReference()}
 			sid := id.String()
 
 			// log.Printf("Chan read (%v): %v\n", sid, elm.GetData())
@@ -280,12 +280,11 @@ func (w *dataWriter) Close() error {
 	w.ch.mu.Lock()
 	defer w.ch.mu.Unlock()
 	delete(w.ch.writers, w.id.String())
-	target := &pb.Target{PrimitiveTransformReference: w.id.Target.ID, Name: w.id.Target.Name}
 	msg := &pb.Elements{
 		Data: []*pb.Elements_Data{
 			{
-				InstructionReference: w.id.InstID,
-				Target:               target,
+				InstructionReference:        w.id.InstID,
+				PrimitiveTransformReference: w.id.TransformReference,
 				// Empty data == sentinel
 			},
 		},
@@ -305,13 +304,12 @@ func (w *dataWriter) Flush() error {
 		return nil
 	}
 
-	target := &pb.Target{PrimitiveTransformReference: w.id.Target.ID, Name: w.id.Target.Name}
 	msg := &pb.Elements{
 		Data: []*pb.Elements_Data{
 			{
-				InstructionReference: w.id.InstID,
-				Target:               target,
-				Data:                 w.buf,
+				InstructionReference:        w.id.InstID,
+				PrimitiveTransformReference: w.id.TransformReference,
+				Data: w.buf,
 			},
 		},
 	}

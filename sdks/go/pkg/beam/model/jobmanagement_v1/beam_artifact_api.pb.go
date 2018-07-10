@@ -41,7 +41,7 @@ func (m *ArtifactMetadata) Reset()         { *m = ArtifactMetadata{} }
 func (m *ArtifactMetadata) String() string { return proto.CompactTextString(m) }
 func (*ArtifactMetadata) ProtoMessage()    {}
 func (*ArtifactMetadata) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{0}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{0}
 }
 func (m *ArtifactMetadata) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ArtifactMetadata.Unmarshal(m, b)
@@ -94,7 +94,7 @@ func (m *Manifest) Reset()         { *m = Manifest{} }
 func (m *Manifest) String() string { return proto.CompactTextString(m) }
 func (*Manifest) ProtoMessage()    {}
 func (*Manifest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{1}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{1}
 }
 func (m *Manifest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_Manifest.Unmarshal(m, b)
@@ -134,7 +134,7 @@ func (m *ProxyManifest) Reset()         { *m = ProxyManifest{} }
 func (m *ProxyManifest) String() string { return proto.CompactTextString(m) }
 func (*ProxyManifest) ProtoMessage()    {}
 func (*ProxyManifest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{2}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{2}
 }
 func (m *ProxyManifest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ProxyManifest.Unmarshal(m, b)
@@ -180,7 +180,7 @@ func (m *ProxyManifest_Location) Reset()         { *m = ProxyManifest_Location{}
 func (m *ProxyManifest_Location) String() string { return proto.CompactTextString(m) }
 func (*ProxyManifest_Location) ProtoMessage()    {}
 func (*ProxyManifest_Location) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{2, 0}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{2, 0}
 }
 func (m *ProxyManifest_Location) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ProxyManifest_Location.Unmarshal(m, b)
@@ -228,7 +228,7 @@ func (m *GetManifestRequest) Reset()         { *m = GetManifestRequest{} }
 func (m *GetManifestRequest) String() string { return proto.CompactTextString(m) }
 func (*GetManifestRequest) ProtoMessage()    {}
 func (*GetManifestRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{3}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{3}
 }
 func (m *GetManifestRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetManifestRequest.Unmarshal(m, b)
@@ -267,7 +267,7 @@ func (m *GetManifestResponse) Reset()         { *m = GetManifestResponse{} }
 func (m *GetManifestResponse) String() string { return proto.CompactTextString(m) }
 func (*GetManifestResponse) ProtoMessage()    {}
 func (*GetManifestResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{4}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{4}
 }
 func (m *GetManifestResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetManifestResponse.Unmarshal(m, b)
@@ -310,7 +310,7 @@ func (m *GetArtifactRequest) Reset()         { *m = GetArtifactRequest{} }
 func (m *GetArtifactRequest) String() string { return proto.CompactTextString(m) }
 func (*GetArtifactRequest) ProtoMessage()    {}
 func (*GetArtifactRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{5}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{5}
 }
 func (m *GetArtifactRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_GetArtifactRequest.Unmarshal(m, b)
@@ -356,7 +356,7 @@ func (m *ArtifactChunk) Reset()         { *m = ArtifactChunk{} }
 func (m *ArtifactChunk) String() string { return proto.CompactTextString(m) }
 func (*ArtifactChunk) ProtoMessage()    {}
 func (*ArtifactChunk) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{6}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{6}
 }
 func (m *ArtifactChunk) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_ArtifactChunk.Unmarshal(m, b)
@@ -398,7 +398,7 @@ func (m *PutArtifactMetadata) Reset()         { *m = PutArtifactMetadata{} }
 func (m *PutArtifactMetadata) String() string { return proto.CompactTextString(m) }
 func (*PutArtifactMetadata) ProtoMessage()    {}
 func (*PutArtifactMetadata) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{7}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{7}
 }
 func (m *PutArtifactMetadata) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PutArtifactMetadata.Unmarshal(m, b)
@@ -449,7 +449,7 @@ func (m *PutArtifactRequest) Reset()         { *m = PutArtifactRequest{} }
 func (m *PutArtifactRequest) String() string { return proto.CompactTextString(m) }
 func (*PutArtifactRequest) ProtoMessage()    {}
 func (*PutArtifactRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{8}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{8}
 }
 func (m *PutArtifactRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PutArtifactRequest.Unmarshal(m, b)
@@ -588,7 +588,7 @@ func (m *PutArtifactResponse) Reset()         { *m = PutArtifactResponse{} }
 func (m *PutArtifactResponse) String() string { return proto.CompactTextString(m) }
 func (*PutArtifactResponse) ProtoMessage()    {}
 func (*PutArtifactResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{9}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{9}
 }
 func (m *PutArtifactResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_PutArtifactResponse.Unmarshal(m, b)
@@ -625,7 +625,7 @@ func (m *CommitManifestRequest) Reset()         { *m = CommitManifestRequest{} }
 func (m *CommitManifestRequest) String() string { return proto.CompactTextString(m) }
 func (*CommitManifestRequest) ProtoMessage()    {}
 func (*CommitManifestRequest) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{10}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{10}
 }
 func (m *CommitManifestRequest) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CommitManifestRequest.Unmarshal(m, b)
@@ -674,7 +674,7 @@ func (m *CommitManifestResponse) Reset()         { *m = CommitManifestResponse{}
 func (m *CommitManifestResponse) String() string { return proto.CompactTextString(m) }
 func (*CommitManifestResponse) ProtoMessage()    {}
 func (*CommitManifestResponse) Descriptor() ([]byte, []int) {
-	return fileDescriptor_beam_artifact_api_e055cefa38e30fa8, []int{11}
+	return fileDescriptor_beam_artifact_api_fccc2c1c0636bdae, []int{11}
 }
 func (m *CommitManifestResponse) XXX_Unmarshal(b []byte) error {
 	return xxx_messageInfo_CommitManifestResponse.Unmarshal(m, b)
@@ -1001,10 +1001,10 @@ var _ArtifactRetrievalService_serviceDesc = grpc.ServiceDesc{
 }
 
 func init() {
-	proto.RegisterFile("beam_artifact_api.proto", fileDescriptor_beam_artifact_api_e055cefa38e30fa8)
+	proto.RegisterFile("beam_artifact_api.proto", fileDescriptor_beam_artifact_api_fccc2c1c0636bdae)
 }
 
-var fileDescriptor_beam_artifact_api_e055cefa38e30fa8 = []byte{
+var fileDescriptor_beam_artifact_api_fccc2c1c0636bdae = []byte{
 	// 613 bytes of a gzipped FileDescriptorProto
 	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xac, 0x56, 0xc1, 0x6e, 0xd3, 0x4c,
 	0x10, 0xee, 0x3a, 0xbf, 0x7e, 0xd2, 0x31, 0x2d, 0xd1, 0x56, 0x2d, 0x56, 0x4e, 0x91, 0x91, 0x68,

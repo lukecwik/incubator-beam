@@ -41,7 +41,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ThreadFactory;
 import org.apache.beam.fn.harness.FnHarness;
-import org.apache.beam.model.fnexecution.v1.BeamFnApi.Target;
 import org.apache.beam.model.pipeline.v1.RunnerApi;
 import org.apache.beam.runners.core.construction.PipelineTranslation;
 import org.apache.beam.runners.core.construction.graph.ExecutableStage;
@@ -219,10 +218,10 @@ public class RemoteExecutionTest implements Serializable {
 
     BundleProcessor<byte[]> processor =
         controlClient.getProcessor(descriptor.getProcessBundleDescriptor(), remoteDestination);
-    Map<Target, ? super Coder<WindowedValue<?>>> outputTargets = descriptor.getOutputTargetCoders();
-    Map<Target, Collection<? super WindowedValue<?>>> outputValues = new HashMap<>();
-    Map<Target, RemoteOutputReceiver<?>> outputReceivers = new HashMap<>();
-    for (Entry<Target, ? super Coder<WindowedValue<?>>> targetCoder : outputTargets.entrySet()) {
+    Map<String, ? super Coder<WindowedValue<?>>> outputTargets = descriptor.getRemoteOutputCoders();
+    Map<String, Collection<? super WindowedValue<?>>> outputValues = new HashMap<>();
+    Map<String, RemoteOutputReceiver<?>> outputReceivers = new HashMap<>();
+    for (Entry<String, ? super Coder<WindowedValue<?>>> targetCoder : outputTargets.entrySet()) {
       List<? super WindowedValue<?>> outputContents =
           Collections.synchronizedList(new ArrayList<>());
       outputValues.put(targetCoder.getKey(), outputContents);
@@ -307,10 +306,10 @@ public class RemoteExecutionTest implements Serializable {
     BundleProcessor<byte[]> processor =
         controlClient.getProcessor(
             descriptor.getProcessBundleDescriptor(), remoteDestination, stateDelegator);
-    Map<Target, Coder<WindowedValue<?>>> outputTargets = descriptor.getOutputTargetCoders();
-    Map<Target, Collection<WindowedValue<?>>> outputValues = new HashMap<>();
-    Map<Target, RemoteOutputReceiver<?>> outputReceivers = new HashMap<>();
-    for (Entry<Target, Coder<WindowedValue<?>>> targetCoder : outputTargets.entrySet()) {
+    Map<String, Coder<WindowedValue<?>>> outputTargets = descriptor.getRemoteOutputCoders();
+    Map<String, Collection<WindowedValue<?>>> outputValues = new HashMap<>();
+    Map<String, RemoteOutputReceiver<?>> outputReceivers = new HashMap<>();
+    for (Entry<String, Coder<WindowedValue<?>>> targetCoder : outputTargets.entrySet()) {
       List<WindowedValue<?>> outputContents = Collections.synchronizedList(new ArrayList<>());
       outputValues.put(targetCoder.getKey(), outputContents);
       outputReceivers.put(

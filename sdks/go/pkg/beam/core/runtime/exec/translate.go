@@ -63,9 +63,10 @@ func UnmarshalPlan(desc *fnpb.ProcessBundleDescriptor) (*Plan, error) {
 		}
 
 		u := &DataSource{UID: b.idgen.New(), Port: port}
+		u.TransformReference = id
 
 		for key, pid := range transform.GetOutputs() {
-			u.Target = Target{ID: id, Name: key}
+			u.OutputName = key
 
 			u.Out, err = b.makePCollection(pid)
 			if err != nil {
@@ -459,10 +460,9 @@ func (b *builder) makeLink(from string, id linkID) (Node, error) {
 		}
 
 		sink := &DataSink{UID: b.idgen.New(), Port: port}
+		sink.TransformReference = id.to
 
-		for key, pid := range transform.GetInputs() {
-			sink.Target = Target{ID: id.to, Name: key}
-
+		for _, pid := range transform.GetInputs() {
 			if cid == "" {
 				c, wc, err := b.makeCoderForPCollection(pid)
 				if err != nil {

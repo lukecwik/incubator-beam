@@ -39,8 +39,7 @@ import org.slf4j.LoggerFactory;
 /**
  * A gRPC multiplexer for a specific {@link Endpoints.ApiServiceDescriptor}.
  *
- * <p>Multiplexes data for inbound consumers based upon their individual {@link
- * org.apache.beam.model.fnexecution.v1.BeamFnApi.Target}s.
+ * <p>Multiplexes data for inbound consumers based upon their individual PTransform ids.
  *
  * <p>Multiplexing inbound and outbound streams is as thread safe as the consumers of those streams.
  * For inbound streams, this is as thread safe as the inbound observers. For outbound streams, this
@@ -128,7 +127,8 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
       for (BeamFnApi.Elements.Data data : value.getDataList()) {
         try {
           LogicalEndpoint key =
-              LogicalEndpoint.of(data.getInstructionReference(), data.getTarget());
+              LogicalEndpoint.of(
+                  data.getInstructionReference(), data.getPrimitiveTransformReference());
           CompletableFuture<Consumer<BeamFnApi.Elements.Data>> consumer = receiverFuture(key);
           if (!consumer.isDone()) {
             LOG.debug(

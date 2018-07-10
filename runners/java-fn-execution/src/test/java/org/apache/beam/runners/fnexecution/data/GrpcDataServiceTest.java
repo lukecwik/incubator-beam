@@ -58,8 +58,7 @@ import org.junit.runners.JUnit4;
 /** Tests for {@link GrpcDataService}. */
 @RunWith(JUnit4.class)
 public class GrpcDataServiceTest {
-  private static final BeamFnApi.Target TARGET =
-      BeamFnApi.Target.newBuilder().setPrimitiveTransformReference("888").setName("test").build();
+  private static final String PRIMITIVE_TRANSFORM_REFERENCE = "888";
   private static final Coder<WindowedValue<String>> CODER =
       LengthPrefixCoder.of(WindowedValue.getValueOnlyCoder(StringUtf8Coder.of()));
 
@@ -92,7 +91,8 @@ public class GrpcDataServiceTest {
 
       for (int i = 0; i < 3; ++i) {
         CloseableFnDataReceiver<WindowedValue<String>> consumer =
-            service.send(LogicalEndpoint.of(Integer.toString(i), TARGET), CODER);
+            service.send(
+                LogicalEndpoint.of(Integer.toString(i), PRIMITIVE_TRANSFORM_REFERENCE), CODER);
 
         consumer.accept(WindowedValue.valueInGlobalWindow("A" + i));
         consumer.accept(WindowedValue.valueInGlobalWindow("B" + i));
@@ -146,7 +146,9 @@ public class GrpcDataServiceTest {
         serverInboundValues.add(serverInboundValue);
         readFutures.add(
             service.receive(
-                LogicalEndpoint.of(Integer.toString(i), TARGET), CODER, serverInboundValue::add));
+                LogicalEndpoint.of(Integer.toString(i), PRIMITIVE_TRANSFORM_REFERENCE),
+                CODER,
+                serverInboundValue::add));
       }
       for (InboundDataClient readFuture : readFutures) {
         readFuture.awaitCompletion();
@@ -172,7 +174,7 @@ public class GrpcDataServiceTest {
         .addData(
             BeamFnApi.Elements.Data.newBuilder()
                 .setInstructionReference(id)
-                .setTarget(TARGET)
+                .setPrimitiveTransformReference(PRIMITIVE_TRANSFORM_REFERENCE)
                 .setData(
                     ByteString.copyFrom(
                             encodeToByteArray(CODER, WindowedValue.valueInGlobalWindow("A" + id)))
@@ -184,7 +186,10 @@ public class GrpcDataServiceTest {
                             ByteString.copyFrom(
                                 encodeToByteArray(
                                     CODER, WindowedValue.valueInGlobalWindow("C" + id))))))
-        .addData(BeamFnApi.Elements.Data.newBuilder().setInstructionReference(id).setTarget(TARGET))
+        .addData(
+            BeamFnApi.Elements.Data.newBuilder()
+                .setInstructionReference(id)
+                .setPrimitiveTransformReference(PRIMITIVE_TRANSFORM_REFERENCE))
         .build();
   }
 }

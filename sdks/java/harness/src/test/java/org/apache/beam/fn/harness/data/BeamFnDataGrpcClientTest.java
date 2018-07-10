@@ -41,7 +41,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi;
-import org.apache.beam.model.fnexecution.v1.BeamFnApi.Target;
 import org.apache.beam.model.fnexecution.v1.BeamFnDataGrpc;
 import org.apache.beam.model.pipeline.v1.Endpoints;
 import org.apache.beam.sdk.coders.Coder;
@@ -65,18 +64,9 @@ public class BeamFnDataGrpcClientTest {
   private static final Coder<WindowedValue<String>> CODER =
       LengthPrefixCoder.of(
           WindowedValue.getFullCoder(StringUtf8Coder.of(), GlobalWindow.Coder.INSTANCE));
-  private static final LogicalEndpoint ENDPOINT_A =
-      LogicalEndpoint.of(
-          "12L",
-          Target.newBuilder().setPrimitiveTransformReference("34L").setName("targetA").build());
+  private static final LogicalEndpoint ENDPOINT_A = LogicalEndpoint.of("12L", "34L");
 
-  private static final LogicalEndpoint ENDPOINT_B =
-      LogicalEndpoint.of(
-          "56L",
-          BeamFnApi.Target.newBuilder()
-              .setPrimitiveTransformReference("78L")
-              .setName("targetB")
-              .build());
+  private static final LogicalEndpoint ENDPOINT_B = LogicalEndpoint.of("56L", "78L");
 
   private static final BeamFnApi.Elements ELEMENTS_A_1;
   private static final BeamFnApi.Elements ELEMENTS_A_2;
@@ -89,7 +79,7 @@ public class BeamFnDataGrpcClientTest {
               .addData(
                   BeamFnApi.Elements.Data.newBuilder()
                       .setInstructionReference(ENDPOINT_A.getInstructionId())
-                      .setTarget(ENDPOINT_A.getTarget())
+                      .setPrimitiveTransformReference(ENDPOINT_A.getPrimitiveTransformReference())
                       .setData(
                           ByteString.copyFrom(encodeToByteArray(CODER, valueInGlobalWindow("ABC")))
                               .concat(
@@ -101,21 +91,21 @@ public class BeamFnDataGrpcClientTest {
               .addData(
                   BeamFnApi.Elements.Data.newBuilder()
                       .setInstructionReference(ENDPOINT_A.getInstructionId())
-                      .setTarget(ENDPOINT_A.getTarget())
+                      .setPrimitiveTransformReference(ENDPOINT_A.getPrimitiveTransformReference())
                       .setData(
                           ByteString.copyFrom(
                               encodeToByteArray(CODER, valueInGlobalWindow("GHI")))))
               .addData(
                   BeamFnApi.Elements.Data.newBuilder()
                       .setInstructionReference(ENDPOINT_A.getInstructionId())
-                      .setTarget(ENDPOINT_A.getTarget()))
+                      .setPrimitiveTransformReference(ENDPOINT_A.getPrimitiveTransformReference()))
               .build();
       ELEMENTS_B_1 =
           BeamFnApi.Elements.newBuilder()
               .addData(
                   BeamFnApi.Elements.Data.newBuilder()
                       .setInstructionReference(ENDPOINT_B.getInstructionId())
-                      .setTarget(ENDPOINT_B.getTarget())
+                      .setPrimitiveTransformReference(ENDPOINT_B.getPrimitiveTransformReference())
                       .setData(
                           ByteString.copyFrom(encodeToByteArray(CODER, valueInGlobalWindow("JKL")))
                               .concat(
@@ -124,7 +114,7 @@ public class BeamFnDataGrpcClientTest {
               .addData(
                   BeamFnApi.Elements.Data.newBuilder()
                       .setInstructionReference(ENDPOINT_B.getInstructionId())
-                      .setTarget(ENDPOINT_B.getTarget()))
+                      .setPrimitiveTransformReference(ENDPOINT_B.getPrimitiveTransformReference()))
               .build();
     } catch (Exception e) {
       throw new ExceptionInInitializerError(e);

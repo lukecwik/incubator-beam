@@ -19,20 +19,20 @@
 package org.apache.beam.runners.fnexecution.data;
 
 import com.google.auto.value.AutoValue;
-import org.apache.beam.model.fnexecution.v1.BeamFnApi;
 import org.apache.beam.sdk.coders.Coder;
 
 /**
- * A pair of {@link Coder} and {@link BeamFnApi.Target} which specifies the arguments to a {@link
+ * A pair of {@link Coder} and PTransform id which specifies the arguments to a {@link
  * FnDataService} to send data to a remote harness.
  */
 @AutoValue
 public abstract class RemoteInputDestination<T> {
-  public static <T> RemoteInputDestination<T> of(Coder<T> coder, BeamFnApi.Target target) {
-    return new AutoValue_RemoteInputDestination<>(coder, target);
+  public static <T> RemoteInputDestination<T> of(
+      Coder<T> coder, String primitiveTransformReference) {
+    return new AutoValue_RemoteInputDestination<>(coder, primitiveTransformReference);
   }
 
   public abstract Coder<T> getCoder();
 
-  public abstract BeamFnApi.Target getTarget();
+  public abstract String getPrimitiveTransformReference();
 }

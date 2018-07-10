@@ -125,9 +125,9 @@ public class GrpcDataService extends BeamFnDataGrpc.BeamFnDataImplBase
       Coder<WindowedValue<T>> coder,
       FnDataReceiver<WindowedValue<T>> listener) {
     LOG.debug(
-        "Registering receiver for instruction {} and target {}",
+        "Registering receiver for instruction {} and transform {}",
         inputLocation.getInstructionId(),
-        inputLocation.getTarget());
+        inputLocation.getPrimitiveTransformReference());
     final BeamFnDataInboundObserver<T> observer =
         BeamFnDataInboundObserver.forConsumer(coder, listener);
     if (connectedClient.isDone()) {
@@ -159,9 +159,9 @@ public class GrpcDataService extends BeamFnDataGrpc.BeamFnDataImplBase
   public <T> CloseableFnDataReceiver<WindowedValue<T>> send(
       LogicalEndpoint outputLocation, Coder<WindowedValue<T>> coder) {
     LOG.debug(
-        "Creating sender for instruction {} and target {}",
+        "Creating sender for instruction {} and transform {}",
         outputLocation.getInstructionId(),
-        outputLocation.getTarget());
+        outputLocation.getPrimitiveTransformReference());
     try {
       return BeamFnDataBufferingOutboundObserver.forLocation(
           outputLocation, coder, connectedClient.get(3, TimeUnit.MINUTES).getOutboundObserver());

@@ -29,10 +29,10 @@ import (
 
 // DataSink is a Node.
 type DataSink struct {
-	UID    UnitID
-	Port   Port
-	Target Target
-	Coder  *coder.Coder
+	UID                UnitID
+	Port               Port
+	TransformReference string
+	Coder              *coder.Coder
 
 	enc   ElementEncoder
 	wEnc  WindowEncoder
@@ -52,7 +52,7 @@ func (n *DataSink) Up(ctx context.Context) error {
 }
 
 func (n *DataSink) StartBundle(ctx context.Context, id string, data DataManager) error {
-	sid := StreamID{Port: n.Port, Target: n.Target, InstID: id}
+	sid := StreamID{Port: n.Port, TransformReference: n.TransformReference, InstID: id}
 
 	w, err := data.OpenWrite(ctx, sid)
 	if err != nil {
@@ -92,6 +92,6 @@ func (n *DataSink) Down(ctx context.Context) error {
 }
 
 func (n *DataSink) String() string {
-	sid := StreamID{Port: n.Port, Target: n.Target}
+	sid := StreamID{Port: n.Port, TransformReference: n.TransformReference}
 	return fmt.Sprintf("DataSink[%v] Coder:%v", sid, n.Coder)
 }
