@@ -77,6 +77,32 @@ buildscript {
 
 apply plugin: "base"
 
+allprojects {
+  // Apply a plugin which provides the 'updateOfflineRepository' task that creates an offline
+  // repository. This offline repository satisfies all Gradle build dependencies and Java
+  // project dependencies. The offline repository is placed within $rootDir/offline-repo
+  // but can be overridden by specifying the 'offlineRepositoryRoot' Gradle option.
+  // Note that parallel build must be disabled when executing 'updateOfflineRepository'
+  // by specifying '-Dorg.gradle.parallel=false', see
+  // https://github.com/mdietrichstein/gradle-offline-dependencies-plugin/issues/3
+  project.apply plugin: "io.pry.gradle.offline_dependencies"
+
+  project.offlineDependencies {
+    repositories {
+      maven { url offlineRepositoryRoot }
+      mavenLocal()
+      mavenCentral()
+      jcenter()
+      maven { url "https://plugins.gradle.org/m2/" }
+      maven { url "http://repo.spring.io/plugins-release" }
+    }
+
+    includeSources = false
+    includeJavadocs = false
+    includeIvyXmls = false
+  }
+}
+
 // Plugins which require online access should not be enabled when running in offline mode.
 if (!gradle.startParameter.isOffline()) {
   apply plugin: "com.gradle.build-scan"
