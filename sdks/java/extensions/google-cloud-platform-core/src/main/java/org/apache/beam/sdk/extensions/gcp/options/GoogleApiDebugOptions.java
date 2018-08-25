@@ -81,7 +81,7 @@ public interface GoogleApiDebugOptions extends PipelineOptions {
     public void initialize(AbstractGoogleClientRequest<?> request) throws IOException {
       for (Map.Entry<String, String> entry : this.entrySet()) {
         if (request.getClass().getCanonicalName().contains(entry.getKey())) {
-          request.set("$trace", entry.getValue());
+          request.set("trace", entry.getValue());
         }
       }
     }

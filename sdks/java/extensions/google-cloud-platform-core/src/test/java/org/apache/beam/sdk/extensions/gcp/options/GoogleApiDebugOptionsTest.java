@@ -54,7 +54,7 @@ public class GoogleApiDebugOptionsTest {
 
     Storage.Objects.Get request =
         Transport.newStorageClient(options).build().objects().get("testBucketId", "testObjectId");
-    assertEquals("GetTraceDestination", request.get("$trace"));
+    assertEquals("GetTraceDestination", request.get("trace"));
   }
 
   @Test
@@ -67,7 +67,7 @@ public class GoogleApiDebugOptionsTest {
 
     Storage.Objects.List request =
         Transport.newStorageClient(options).build().objects().list("testProjectId");
-    assertNull(request.get("$trace"));
+    assertNull(request.get("trace"));
   }
 
   @Test
@@ -80,11 +80,11 @@ public class GoogleApiDebugOptionsTest {
 
     Storage.Objects.Get getRequest =
         Transport.newStorageClient(options).build().objects().get("testBucketId", "testObjectId");
-    assertEquals("GetTraceDestination", getRequest.get("$trace"));
+    assertEquals("GetTraceDestination", getRequest.get("trace"));
 
     Storage.Objects.List listRequest =
         Transport.newStorageClient(options).build().objects().list("testProjectId");
-    assertEquals("ListTraceDestination", listRequest.get("$trace"));
+    assertEquals("ListTraceDestination", listRequest.get("trace"));
   }
 
   @Test
@@ -98,11 +98,11 @@ public class GoogleApiDebugOptionsTest {
 
     Storage.Objects.Get getRequest =
         Transport.newStorageClient(options).build().objects().get("testBucketId", "testObjectId");
-    assertEquals("TraceDestination", getRequest.get("$trace"));
+    assertEquals("TraceDestination", getRequest.get("trace"));
 
     Storage.Objects.List listRequest =
         Transport.newStorageClient(options).build().objects().list("testProjectId");
-    assertEquals("TraceDestination", listRequest.get("$trace"));
+    assertEquals("TraceDestination", listRequest.get("trace"));
   }
 
   @Test
@@ -114,12 +114,12 @@ public class GoogleApiDebugOptionsTest {
 
     Storage.Objects.Get getRequest =
         Transport.newStorageClient(options).build().objects().get("testBucketId", "testObjectId");
-    assertEquals("TraceDestination", getRequest.get("$trace"));
+    assertEquals("TraceDestination", getRequest.get("trace"));
 
     Delete deleteRequest = GcpOptions.GcpTempLocationFactory.newCloudResourceManagerClient(
         options.as(CloudResourceManagerOptions.class))
         .build().projects().delete("testProjectId");
-    assertNull(deleteRequest.get("$trace"));
+    assertNull(deleteRequest.get("trace"));
   }
 
   @Test
@@ -132,11 +132,11 @@ public class GoogleApiDebugOptionsTest {
 
     Storage.Objects.Get getRequest =
         Transport.newStorageClient(options).build().objects().get("testBucketId", "testObjectId");
-    assertEquals("TraceDestination", getRequest.get("$trace"));
+    assertEquals("TraceDestination", getRequest.get("trace"));
 
     Storage.Objects.List listRequest =
         Transport.newStorageClient(options).build().objects().list("testProjectId");
-    assertNull(listRequest.get("$trace"));
+    assertNull(listRequest.get("trace"));
   }
 
   @Test

@@ -89,7 +89,17 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
       // We will retry if the request supports retry or the backoff was successful.
       // Note that the order of these checks is important since
       // backOffWasSuccessful will perform a sleep.
-      boolean willRetry = supportsRetry && backOffWasSuccessful(ioExceptionBackOff);
+      boolean willRetry = supportsRetry;
+
+      Exception backOffFailed = null;
+      if (willRetry) {
+        try {
+          willRetry = next(sleeper, ioExceptionBackOff);
+        } catch (IOException | InterruptedException e) {
+          backOffFailed = e;
+        }
+      }
+
       if (willRetry) {
         ioExceptionRetries += 1;
         LOG.debug("Request failed with IOException, will retry: {}", request.getUrl());
@@ -97,13 +107,15 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
         String message = "Request failed with IOException, "
             + "performed {} retries due to IOExceptions, "
             + "performed {} retries due to unsuccessful status codes, "
-            + "HTTP framework says request {} be retried, "
+            + "HTTP framework says request {} be retried, backoff {} "
             + "(caller responsible for retrying): {}";
         LOG.warn(message,
             ioExceptionRetries,
             unsuccessfulResponseRetries,
             supportsRetry ? "can" : "cannot",
-            request.getUrl());
+            backOffFailed == null ? "gave up" : "failed due to exception",
+            request.getUrl(),
+            backOffFailed);
       }
       return willRetry;
     }
@@ -113,10 +125,17 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
         throws IOException {
       // We will retry if the request supports retry and the status code requires a backoff
       // and the backoff was successful. Note that the order of these checks is important since
-      // backOffWasSuccessful will perform a sleep.
-      boolean willRetry = supportsRetry
-          && retryOnStatusCode(response.getStatusCode())
-          && backOffWasSuccessful(unsuccessfulResponseBackOff);
+      // next will perform a sleep.
+      boolean willRetry = supportsRetry && retryOnStatusCode(response.getStatusCode());
+      Exception backOffFailed = null;
+      if (willRetry) {
+        try {
+          willRetry = next(sleeper, unsuccessfulResponseBackOff);
+        } catch (IOException | InterruptedException e) {
+          backOffFailed = e;
+        }
+      }
+
       if (willRetry) {
         unsuccessfulResponseRetries += 1;
         LOG.debug("Request failed with code {}, will retry: {}",
@@ -125,7 +144,7 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
         String message = "Request failed with code {}, "
             + "performed {} retries due to IOExceptions, "
             + "performed {} retries due to unsuccessful status codes, "
-            + "HTTP framework says request {} be retried, "
+            + "HTTP framework says request {} be retried, backoff {} "
             + "(caller responsible for retrying): {}";
         if (ignoredResponseCodes.contains(response.getStatusCode())) {
           // Log ignored response codes at a lower level
@@ -134,26 +153,21 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
               ioExceptionRetries,
               unsuccessfulResponseRetries,
               supportsRetry ? "can" : "cannot",
-              request.getUrl());
+              backOffFailed == null ? "gave up" : "failed due to exception",
+              request.getUrl(),
+              backOffFailed);
         } else {
           LOG.warn(message,
               response.getStatusCode(),
               ioExceptionRetries,
               unsuccessfulResponseRetries,
               supportsRetry ? "can" : "cannot",
-              request.getUrl());
+              backOffFailed == null ? "gave up" : "failed due to exception",
+              request.getUrl(),
+              backOffFailed);
         }
       }
       return willRetry;
-    }
-
-    /** Returns true iff performing the backoff was successful. */
-    private boolean backOffWasSuccessful(BackOff backOff) {
-      try {
-        return next(sleeper, backOff);
-      } catch (InterruptedException | IOException e) {
-        return false;
-      }
     }
 
     /** Returns true iff the {@code statusCode} represents an error that should be retried. */
