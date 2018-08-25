@@ -29,6 +29,7 @@ import com.google.api.client.util.BackOff;
 import com.google.api.client.util.ExponentialBackOff;
 import com.google.api.client.util.NanoClock;
 import com.google.api.client.util.Sleeper;
+import com.google.common.base.MoreObjects;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collection;
@@ -107,15 +108,29 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
         String message = "Request failed with IOException, "
             + "performed {} retries due to IOExceptions, "
             + "performed {} retries due to unsuccessful status codes, "
-            + "HTTP framework says request {} be retried, backoff {} "
+            + "HTTP framework says request {} be retried, backoff {} [{}]"
             + "(caller responsible for retrying): {}";
         LOG.warn(message,
             ioExceptionRetries,
             unsuccessfulResponseRetries,
             supportsRetry ? "can" : "cannot",
             backOffFailed == null ? "gave up" : "failed due to exception",
+            ioExceptionBackOff,
             request.getUrl(),
             backOffFailed);
+        if (ioExceptionBackOff instanceof ExponentialBackOff) {
+          ExponentialBackOff backOff = (ExponentialBackOff) ioExceptionBackOff;
+          LOG.warn(MoreObjects.toStringHelper(backOff)
+              .add("getCurrentIntervalMillis", backOff.getCurrentIntervalMillis())
+              .add("getElapsedTimeMillis", backOff.getElapsedTimeMillis())
+              .add("getInitialIntervalMillis", backOff.getInitialIntervalMillis())
+              .add("getMaxElapsedTimeMillis", backOff.getMaxElapsedTimeMillis())
+              .add("getMaxIntervalMillis", backOff.getMaxIntervalMillis())
+              .add("getMultiplier", backOff.getMultiplier())
+              .add("getRandomizationFactor", backOff.getRandomizationFactor())
+              .add("nextBackOffMillis", backOff.nextBackOffMillis())
+              .toString());
+        }
       }
       return willRetry;
     }
@@ -144,7 +159,7 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
         String message = "Request failed with code {}, "
             + "performed {} retries due to IOExceptions, "
             + "performed {} retries due to unsuccessful status codes, "
-            + "HTTP framework says request {} be retried, backoff {} "
+            + "HTTP framework says request {} be retried, backoff {} [{}]"
             + "(caller responsible for retrying): {}";
         if (ignoredResponseCodes.contains(response.getStatusCode())) {
           // Log ignored response codes at a lower level
@@ -154,8 +169,22 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
               unsuccessfulResponseRetries,
               supportsRetry ? "can" : "cannot",
               backOffFailed == null ? "gave up" : "failed due to exception",
+              unsuccessfulResponseBackOff,
               request.getUrl(),
               backOffFailed);
+          if (unsuccessfulResponseBackOff instanceof ExponentialBackOff) {
+            ExponentialBackOff backOff = (ExponentialBackOff) unsuccessfulResponseBackOff;
+            LOG.debug(MoreObjects.toStringHelper(backOff)
+                .add("getCurrentIntervalMillis", backOff.getCurrentIntervalMillis())
+                .add("getElapsedTimeMillis", backOff.getElapsedTimeMillis())
+                .add("getInitialIntervalMillis", backOff.getInitialIntervalMillis())
+                .add("getMaxElapsedTimeMillis", backOff.getMaxElapsedTimeMillis())
+                .add("getMaxIntervalMillis", backOff.getMaxIntervalMillis())
+                .add("getMultiplier", backOff.getMultiplier())
+                .add("getRandomizationFactor", backOff.getRandomizationFactor())
+                .add("nextBackOffMillis", backOff.nextBackOffMillis())
+                .toString());
+          }
         } else {
           LOG.warn(message,
               response.getStatusCode(),
@@ -163,8 +192,22 @@ public class RetryHttpRequestInitializer implements HttpRequestInitializer {
               unsuccessfulResponseRetries,
               supportsRetry ? "can" : "cannot",
               backOffFailed == null ? "gave up" : "failed due to exception",
+              unsuccessfulResponseBackOff,
               request.getUrl(),
               backOffFailed);
+          if (unsuccessfulResponseBackOff instanceof ExponentialBackOff) {
+            ExponentialBackOff backOff = (ExponentialBackOff) unsuccessfulResponseBackOff;
+            LOG.warn(MoreObjects.toStringHelper(backOff)
+                .add("getCurrentIntervalMillis", backOff.getCurrentIntervalMillis())
+                .add("getElapsedTimeMillis", backOff.getElapsedTimeMillis())
+                .add("getInitialIntervalMillis", backOff.getInitialIntervalMillis())
+                .add("getMaxElapsedTimeMillis", backOff.getMaxElapsedTimeMillis())
+                .add("getMaxIntervalMillis", backOff.getMaxIntervalMillis())
+                .add("getMultiplier", backOff.getMultiplier())
+                .add("getRandomizationFactor", backOff.getRandomizationFactor())
+                .add("nextBackOffMillis", backOff.nextBackOffMillis())
+                .toString());
+          }
         }
       }
       return willRetry;
