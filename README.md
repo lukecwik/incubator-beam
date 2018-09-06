@@ -2,7 +2,7 @@
 This branch contains the 2.6.0 Apache Beam examples with the pom.xml modified to produce an executable uber jar for usage with the DataflowRunner and GCP I/Os. This tests GCS, Bigquery and Pubsub.
 
 # Useful code links
-[Maven shade plugin configuration](https://github.com/lukecwik/incubator-beam/blob/b31b8aa32e15f5e1f98d54561d1952884efe9d7f/pom.xml#L72)
+[Maven shade plugin configuration to create uber jar](https://github.com/lukecwik/incubator-beam/blob/b31b8aa32e15f5e1f98d54561d1952884efe9d7f/pom.xml#L72)
 
 # How to run
 Create the uber jar by invoking: 
