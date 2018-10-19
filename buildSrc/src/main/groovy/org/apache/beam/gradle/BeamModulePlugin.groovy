@@ -1451,6 +1451,27 @@ artifactId=${project.name}
         }
       }
       project.tasks.check.dependsOn project.tasks.validateShadedJarDoesntExportVendoredDependencies
+
+      // TODO(BEAM-4544): Integrate intellij support into this.
+      project.task('decompile', type: JavaExec) {
+        dependsOn 'shadowJar'
+        main 'org.benf.cfr.reader.Main'
+        classpath project.rootProject.file('cfr_0_133.jar')
+        args '-jar', "${project.shadowJar.archivePath}", '--outputdir', 'build/generated/source/vendored'
+      }
+      project.assemble.dependsOn project.decompile
+
+      project.idea {
+        module {
+          sourceDirs = [
+            project.file('build/generated/source/vendored')
+          ]
+          testSourceDirs = []
+          generatedSourceDirs =  [
+            project.file('build/generated/source/vendored')
+          ]
+        }
+      }
     }
 
     /** ***********************************************************************************************/

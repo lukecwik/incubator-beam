@@ -54,3 +54,25 @@ dependencies {
     compile 'com.google.protobuf:protobuf-java:3.5.1'
     shadow project(path: ":beam-sdks-java-core", configuration: "shadow")
 }
+
+// TODO(BEAM-4544): Integrate intellij support into this.
+project.task('decompile', type: JavaExec) {
+    dependsOn 'shadowJar'
+    main 'org.benf.cfr.reader.Main'
+    classpath project.rootProject.file('cfr_0_133.jar')
+    args '-jar', "${project.shadowJar.archivePath}", '--outputdir', 'build/generated/source/vendored'
+}
+project.assemble.dependsOn project.decompile
+
+project.idea {
+    module {
+        sourceDirs = [
+                project.file('build/generated/source/vendored')
+        ]
+        testSourceDirs = []
+        generatedSourceDirs =  [
+                project.file('build/generated/source/vendored')
+        ]
+    }
+}
+
