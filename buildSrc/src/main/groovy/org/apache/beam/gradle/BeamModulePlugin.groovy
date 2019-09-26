@@ -797,22 +797,9 @@ class BeamModulePlugin implements Plugin<Project> {
       project.apply plugin: "net.ltgt.apt-eclipse"
 
       // Enables a plugin which can apply code formatting to source.
-      project.apply plugin: "com.diffplug.gradle.spotless"
       // scan CVE
       project.apply plugin: "net.ossindex.audit"
       project.audit { rateLimitAsError = false }
-      // Spotless can be removed from the 'check' task by passing -PdisableSpotlessCheck=true on the Gradle
-      // command-line. This is useful for pre-commit which runs spotless separately.
-      def disableSpotlessCheck = project.hasProperty('disableSpotlessCheck') &&
-              project.disableSpotlessCheck == 'true'
-      project.spotless {
-        enforceCheck !disableSpotlessCheck
-        java {
-          licenseHeader javaLicenseHeader
-          googleJavaFormat('1.7')
-          target project.fileTree(project.projectDir) { include 'src/*/java/**/*.java' }
-        }
-      }
 
       // Enables a plugin which performs code analysis for common bugs.
       // This plugin is configured to only analyze the "main" source set.
@@ -1378,16 +1365,6 @@ class BeamModulePlugin implements Plugin<Project> {
     project.ext.applyGroovyNature = {
       project.apply plugin: "groovy"
 
-      project.apply plugin: "com.diffplug.gradle.spotless"
-      project.spotless {
-        def grEclipseConfig = project.project(":").file("buildSrc/greclipse.properties")
-        groovy {
-          licenseHeader javaLicenseHeader
-          paddedCell() // Recommended to avoid cyclic ambiguity issues
-          greclipse().configFile(grEclipseConfig)
-        }
-        groovyGradle { greclipse().configFile(grEclipseConfig) }
-      }
     }
 
     // containerImageName returns a configurable container image name, by default a
