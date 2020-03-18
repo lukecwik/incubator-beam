@@ -279,11 +279,6 @@ public class ParDoTranslation {
           }
 
           @Override
-          public boolean isSplittable() {
-            return signature.processElement().isSplittable();
-          }
-
-          @Override
           public boolean isRequiresTimeSortedInput() {
             return signature.processElement().requiresTimeSortedInput();
           }
@@ -752,7 +747,7 @@ public class ParDoTranslation {
 
   public static boolean isSplittable(AppliedPTransform<?, ?, ?> transform) throws IOException {
     ParDoPayload payload = getParDoPayload(transform);
-    return payload.getSplittable();
+    return !payload.getRestrictionCoderId().isEmpty();
   }
 
   public static FunctionSpec translateWindowMappingFn(
@@ -778,8 +773,6 @@ public class ParDoTranslation {
 
     Map<String, RunnerApi.TimerFamilySpec> translateTimerFamilySpecs(SdkComponents newComponents);
 
-    boolean isSplittable();
-
     boolean isRequiresTimeSortedInput();
 
     boolean requestsFinalization();
@@ -797,7 +790,6 @@ public class ParDoTranslation {
         .putAllTimerSpecs(parDo.translateTimerSpecs(components))
         .putAllTimerFamilySpecs(parDo.translateTimerFamilySpecs(components))
         .putAllSideInputs(parDo.translateSideInputs(components))
-        .setSplittable(parDo.isSplittable())
         .setRequiresTimeSortedInput(parDo.isRequiresTimeSortedInput())
         .setRestrictionCoderId(parDo.translateRestrictionCoderId(components))
         .setRequestsFinalization(parDo.requestsFinalization())
