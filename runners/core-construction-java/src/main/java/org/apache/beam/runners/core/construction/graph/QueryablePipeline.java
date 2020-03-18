@@ -17,24 +17,7 @@
  */
 package org.apache.beam.runners.core.construction.graph;
 
-import static org.apache.beam.runners.core.construction.PTransformTranslation.ASSIGN_WINDOWS_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.COMBINE_PER_KEY_EXTRACT_OUTPUTS_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.COMBINE_PER_KEY_MERGE_ACCUMULATORS_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.COMBINE_PER_KEY_PRECOMBINE_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.CREATE_VIEW_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.FLATTEN_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.GROUP_BY_KEY_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.IMPULSE_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.MAP_WINDOWS_TRANSFORM_URN;
 import static org.apache.beam.runners.core.construction.PTransformTranslation.PAR_DO_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.READ_TRANSFORM_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.SPLITTABLE_PAIR_WITH_RESTRICTION_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.SPLITTABLE_PROCESS_ELEMENTS_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.SPLITTABLE_PROCESS_KEYED_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.SPLITTABLE_PROCESS_SIZED_ELEMENTS_AND_RESTRICTIONS_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.SPLITTABLE_SPLIT_AND_SIZE_RESTRICTIONS_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.SPLITTABLE_SPLIT_RESTRICTION_URN;
-import static org.apache.beam.runners.core.construction.PTransformTranslation.TEST_STREAM_TRANSFORM_URN;
 import static org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.Preconditions.checkArgument;
 
 import java.util.ArrayDeque;
@@ -134,7 +117,7 @@ public class QueryablePipeline {
 
     for (Map.Entry<String, PTransform> transformEntry : components.getTransformsMap().entrySet()) {
       PTransform transform = transformEntry.getValue();
-      boolean isPrimitive = isPrimitiveTransform(transform);
+      boolean isPrimitive = isPrimitiveOrNativeTransform(transform);
       if (isPrimitive) {
         // Sometimes "primitive" transforms have sub-transforms (and even deeper-nested
         // descendents), due to runners
@@ -162,31 +145,12 @@ public class QueryablePipeline {
     return ids;
   }
 
-  private static final Set<String> PRIMITIVE_URNS =
-      ImmutableSet.of(
-          PAR_DO_TRANSFORM_URN,
-          FLATTEN_TRANSFORM_URN,
-          GROUP_BY_KEY_TRANSFORM_URN,
-          IMPULSE_TRANSFORM_URN,
-          ASSIGN_WINDOWS_TRANSFORM_URN,
-          TEST_STREAM_TRANSFORM_URN,
-          MAP_WINDOWS_TRANSFORM_URN,
-          READ_TRANSFORM_URN,
-          CREATE_VIEW_TRANSFORM_URN,
-          COMBINE_PER_KEY_PRECOMBINE_TRANSFORM_URN,
-          COMBINE_PER_KEY_MERGE_ACCUMULATORS_TRANSFORM_URN,
-          COMBINE_PER_KEY_EXTRACT_OUTPUTS_TRANSFORM_URN,
-          SPLITTABLE_PAIR_WITH_RESTRICTION_URN,
-          SPLITTABLE_SPLIT_RESTRICTION_URN,
-          SPLITTABLE_PROCESS_KEYED_URN,
-          SPLITTABLE_PROCESS_ELEMENTS_URN,
-          SPLITTABLE_SPLIT_AND_SIZE_RESTRICTIONS_URN,
-          SPLITTABLE_PROCESS_SIZED_ELEMENTS_AND_RESTRICTIONS_URN);
-
-  /** Returns true if the provided transform is a primitive. */
-  private static boolean isPrimitiveTransform(PTransform transform) {
-    String urn = PTransformTranslation.urnForTransformOrNull(transform);
-    return PRIMITIVE_URNS.contains(urn) || NativeTransforms.isNative(transform);
+  /** Returns true if the provided transform is a primitive or native. */
+  private static boolean isPrimitiveOrNativeTransform(PTransform transform) {
+    boolean isCompositeTransform = transform.getSubtransformsCount() != 0;
+    boolean isAnonymousCompositeTransform = transform.getSpec() == null;
+    return !(isCompositeTransform || isAnonymousCompositeTransform)
+        || NativeTransforms.isNative(transform);
   }
 
   private MutableNetwork<PipelineNode, PipelineEdge> buildNetwork(
