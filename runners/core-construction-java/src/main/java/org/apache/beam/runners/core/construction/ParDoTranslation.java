@@ -17,6 +17,7 @@
  */
 package org.apache.beam.runners.core.construction;
 
+import static org.apache.beam.runners.core.construction.BeamUrns.getUrn;
 import static org.apache.beam.runners.core.construction.PTransformTranslation.PAR_DO_TRANSFORM_URN;
 import static org.apache.beam.runners.core.construction.PTransformTranslation.SPLITTABLE_PAIR_WITH_RESTRICTION_URN;
 import static org.apache.beam.runners.core.construction.PTransformTranslation.SPLITTABLE_PROCESS_ELEMENTS_URN;
@@ -27,6 +28,7 @@ import static org.apache.beam.sdk.transforms.reflect.DoFnSignatures.getStateSpec
 import static org.apache.beam.sdk.transforms.reflect.DoFnSignatures.getTimerSpecOrThrow;
 import static org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.Preconditions.checkArgument;
 import static org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.Preconditions.checkNotNull;
+import static org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.Preconditions.checkState;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -44,6 +46,7 @@ import org.apache.beam.model.pipeline.v1.RunnerApi.ParDoPayload;
 import org.apache.beam.model.pipeline.v1.RunnerApi.Parameter.Type;
 import org.apache.beam.model.pipeline.v1.RunnerApi.SideInput;
 import org.apache.beam.model.pipeline.v1.RunnerApi.SideInput.Builder;
+import org.apache.beam.model.pipeline.v1.RunnerApi.StandardRequirements;
 import org.apache.beam.runners.core.construction.PTransformTranslation.TransformPayloadTranslator;
 import org.apache.beam.runners.core.construction.PTransformTranslation.TransformTranslator;
 import org.apache.beam.sdk.Pipeline;
@@ -87,6 +90,50 @@ import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Sets;
 
 /** Utilities for interacting with {@link ParDo} instances and {@link ParDoPayload} protos. */
 public class ParDoTranslation {
+  /**
+   * This requirement indicates the state_spec and time_spec fields of ParDo transform payloads must
+   * be inspected.
+   */
+  public static String REQUIRES_STATEFUL_PROCESSING_URN = "beam:requirement:pardo:stateful:v1";
+  /**
+   * This requirement indicates the requests_finalization field of ParDo transform payloads must be
+   * inspected.
+   */
+  public static String REQUIRES_BUNDLE_FINALIZATION_URN = "beam:requirement:pardo:finalization:v1";
+  /**
+   * This requirement indicates the requires_stable_input field of ParDo transform payloads must be
+   * inspected.
+   */
+  public static String REQUIRES_STABLE_INPUT_URN = "beam:requirement:pardo:stable_input:v1";
+  /**
+   * This requirement indicates the requires_time_sorted_input field of ParDo transform payloads
+   * must be inspected.
+   */
+  public static String REQUIRES_TIME_SORTED_INPUT_URN =
+      "beam:requirement:pardo:time_sorted_input:v1";
+  /**
+   * This requirement indicates the restriction_coder_id field of ParDo transform payloads must be
+   * inspected.
+   */
+  public static String REQUIRES_SPLITTABLE_DOFN_URN = "beam:requirement:pardo:splittable_dofn:v1";
+
+  static {
+    checkState(
+        REQUIRES_STATEFUL_PROCESSING_URN.equals(
+            getUrn(StandardRequirements.Enum.REQUIRES_STATEFUL_PROCESSING)));
+    checkState(
+        REQUIRES_BUNDLE_FINALIZATION_URN.equals(
+            getUrn(StandardRequirements.Enum.REQUIRES_BUNDLE_FINALIZATION)));
+    checkState(
+        REQUIRES_STABLE_INPUT_URN.equals(getUrn(StandardRequirements.Enum.REQUIRES_STABLE_INPUT)));
+    checkState(
+        REQUIRES_TIME_SORTED_INPUT_URN.equals(
+            getUrn(StandardRequirements.Enum.REQUIRES_TIME_SORTED_INPUT)));
+    checkState(
+        REQUIRES_SPLITTABLE_DOFN_URN.equals(
+            getUrn(StandardRequirements.Enum.REQUIRES_SPLITTABLE_DOFN)));
+  }
+
   /** The URN for an unknown Java {@link DoFn}. */
   public static final String CUSTOM_JAVA_DO_FN_URN = "beam:dofn:javasdk:0.1";
   /** The URN for an unknown Java {@link ViewFn}. */
