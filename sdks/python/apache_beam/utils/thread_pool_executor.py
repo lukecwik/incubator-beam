@@ -21,6 +21,7 @@ from __future__ import absolute_import
 
 import sys
 import threading
+import time
 import weakref
 from concurrent.futures import _base
 
@@ -28,6 +29,10 @@ try:  # Python3
   import queue
 except Exception:  # Python2
   import Queue as queue  # type: ignore[no-redef]
+
+
+_SHUTDOWN = 'SHUTDOWN'
+_EXIT_THREAD = 'EXIT_THREAD'
 
 
 class _WorkItem(object):
@@ -56,119 +61,75 @@ class _WorkItem(object):
 
 class _Worker(threading.Thread):
   def __init__(
-      self, idle_worker_queue, permitted_thread_age_in_seconds, work_item):
+      self, work_queue):
     super(_Worker, self).__init__()
-    self._idle_worker_queue = idle_worker_queue
-    self._permitted_thread_age_in_seconds = permitted_thread_age_in_seconds
-    self._work_item = work_item
-    self._wake_event = threading.Event()
-    self._lock = threading.Lock()
-    self._shutdown = False
+    self._work_queue = work_queue
 
   def run(self):
     while True:
-      self._work_item.run()
-      self._work_item = None
-
-      # If we are explicitly awake then don't add ourselves back to the
-      # idle queue. This occurs in case 3 described below.
-      if not self._wake_event.is_set():
-        self._idle_worker_queue.put(self)
-
-      self._wake_event.wait(self._permitted_thread_age_in_seconds)
-      with self._lock:
-        # When we are awoken, we may be in one of three states:
-        #  1) _work_item is set and _shutdown is False.
-        #     This represents the case when we have accepted work.
-        #  2) _work_item is unset and _shutdown is True.
-        #     This represents the case where either we timed out before
-        #     accepting work or explicitly were shutdown without accepting
-        #     any work.
-        #  3) _work_item is set and _shutdown is True.
-        #     This represents a race where we accepted work and also
-        #     were shutdown before the worker thread started processing
-        #     that work. In this case we guarantee to process the work
-        #     but we don't clear the event ensuring that the next loop
-        #     around through to the wait() won't block and we will exit
-        #     since _work_item will be unset.
-
-        # We only exit when _work_item is unset to prevent dropping of
-        # submitted work.
-        if self._work_item is None:
-          self._shutdown = True
-          return
-        if not self._shutdown:
-          self._wake_event.clear()
-
-  def accepted_work(self, work_item):
-    """Returns True if the work was accepted.
-
-    This method must only be called while the worker is idle.
-    """
-    with self._lock:
-      if self._shutdown:
-        return False
-
-      self._work_item = work_item
-      self._wake_event.set()
-      return True
-
-  def shutdown(self):
-    """Marks this thread as shutdown possibly waking it up if it is idle."""
-    with self._lock:
-      if self._shutdown:
+      work_item = self._work_queue.get()
+      # If we ever get the _SHUTDOWN or _EXIT_THREAD signals then let us
+      # terminate.
+      if work_item is _SHUTDOWN:
+        self._work_queue.put(_SHUTDOWN)
         return
-      self._shutdown = True
-      self._wake_event.set()
+      elif work_item is _EXIT_THREAD:
+        return
+
+      # Otherwise run the work item we were assigned.
+      work_item.run()
 
 
 class UnboundedThreadPoolExecutor(_base.Executor):
   def __init__(self, permitted_thread_age_in_seconds=30):
     self._permitted_thread_age_in_seconds = permitted_thread_age_in_seconds
-    self._idle_worker_queue = queue.Queue()
+    self._work_queue = queue.Queue()
     self._workers = weakref.WeakSet()
     self._shutdown = False
     self._lock = threading.Lock()  # Guards access to _workers and _shutdown
+    self._last_new_worker = time.clock()
+    # Ensure at least one worker is watching the work queue
+    worker = _Worker(self._work_queue)
+    worker.daemon = True
+    worker.start()
+    self._workers.add(worker)
 
   def submit(self, fn, *args, **kwargs):
     """Attempts to submit the work item.
 
     A runtime error is raised if the pool has been shutdown.
     """
+    with self._lock:
+      if self._shutdown:
+        raise RuntimeError(
+            'Cannot schedule new tasks after thread pool '
+            'has been shutdown.')
+
+      # If there is a pending work item in the queue from the last time and we
+      # haven't created a thread in some amount of time, increase the number
+      # of workers.
+      if not self._work_queue.empty():
+        current_time = time.clock()
+        if current_time - self._last_new_worker > 10:
+          self._last_new_worker = current_time
+          worker = _Worker(self._work_queue)
+          worker.daemon = True
+          worker.start()
+          self._workers.add(worker)
+
+    # Add the work item to the work queue
     future = _base.Future()
     work_item = _WorkItem(future, fn, args, kwargs)
-    try:
-      # Keep trying to get an idle worker from the queue until we find one
-      # that accepts the work.
-      while not self._idle_worker_queue.get(
-          block=False).accepted_work(work_item):
-        pass
-      return future
-    except queue.Empty:
-      with self._lock:
-        if self._shutdown:
-          raise RuntimeError(
-              'Cannot schedule new tasks after thread pool '
-              'has been shutdown.')
-
-        worker = _Worker(
-            self._idle_worker_queue,
-            self._permitted_thread_age_in_seconds,
-            work_item)
-        worker.daemon = True
-        worker.start()
-        self._workers.add(worker)
-        return future
+    self._work_queue.put(work_item)
+    return future
 
   def shutdown(self, wait=True):
     with self._lock:
       if self._shutdown:
         return
-
       self._shutdown = True
-      for worker in self._workers:
-        worker.shutdown()
 
-      if wait:
-        for worker in self._workers:
-          worker.join()
+    self._work_queue.put(_SHUTDOWN)
+    if wait:
+      for worker in self._workers:
+        worker.join()
