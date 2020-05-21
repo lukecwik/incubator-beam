@@ -17,21 +17,28 @@
  */
 package org.apache.beam.sdk.transforms;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
 import javax.annotation.Nullable;
 import org.apache.beam.sdk.PipelineRunner;
 import org.apache.beam.sdk.annotations.Internal;
+import org.apache.beam.sdk.coders.BigEndianLongCoder;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.CoderException;
 import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.coders.VoidCoder;
+import org.apache.beam.sdk.io.range.OffsetRange;
 import org.apache.beam.sdk.runners.TransformHierarchy.Node;
+import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.util.CoderUtils;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.PCollectionViews;
+import org.apache.beam.sdk.values.PCollectionViews.ListViewFn.MetaOr;
+import org.apache.beam.sdk.values.PCollectionViews.ListViewFn.MetaOrCoder;
 import org.apache.beam.sdk.values.PCollectionViews.TypeDescriptorSupplier;
 
 /**
@@ -157,7 +164,10 @@ public class View {
    * PCollectionView} mapping each window to a {@link List} containing all of the elements in the
    * window.
    *
-   * <p>Unlike with {@link #asIterable}, the resulting list is required to fit in memory.
+   * <p>This view should only be used if random access and/or size of the PCollection is required.
+   * {@link #asIterable()} will perform significantly better for sequential access.
+   *
+   * <p>Some runners may require that the view fits in memory.
    */
   public static <T> AsList<T> asList() {
     return new AsList<>();
@@ -168,9 +178,7 @@ public class View {
    * produces a {@link PCollectionView} mapping each window to an {@link Iterable} of the values in
    * that window.
    *
-   * <p>The values of the {@link Iterable} for a window are not required to fit in memory, but they
-   * may also not be effectively cached. If it is known that every window fits in memory, and
-   * stronger caching is desired, use {@link #asList}.
+   * <p>Some runners may require that the view fits in memory.
    */
   public static <T> AsIterable<T> asIterable() {
     return new AsIterable<>();
@@ -191,7 +199,7 @@ public class View {
    *     .apply(View.<K, OutputT>asMap());
    * }</pre>
    *
-   * <p>Currently, the resulting map is required to fit into memory.
+   * <p>Some runners may require that the view fits in memory.
    */
   public static <K, V> AsMap<K, V> asMap() {
     return new AsMap<>();
@@ -208,6 +216,8 @@ public class View {
    * PCollection<KV<K, V>> input = ... // maybe more than one occurrence of a some keys
    * PCollectionView<Map<K, Iterable<V>>> output = input.apply(View.<K, V>asMultimap());
    * }</pre>
+   *
+   * <p>Some runners may require that the view fits in memory.
    */
   public static <K, V> AsMultimap<K, V> asMultimap() {
     return new AsMultimap<>();
@@ -219,6 +229,16 @@ public class View {
    * <p>Public only so a {@link PipelineRunner} may override its behavior.
    *
    * <p>See {@link View#asList()}.
+   *
+   * <p>The materialized format uses {@link Materializations#MULTIMAP_MATERIALIZATION_URN multimap}
+   * access pattern where the key is a position and the index of the value in the iterable is a
+   * sub-position. All keys are {@code long}s and all sub-positions are also considered {@code
+   * long}s. A mapping from {@code [0, size)} to {@code (position, sub-position)} is used to provide
+   * an ordering over all values in the {@link PCollection} per {@link BoundedWindow window}. A
+   * total ordering is done by taking {@code (position, sub-position)} and ordering first by {@code
+   * position} and then by {@code sub-position} where the smallest value in such an ordering
+   * represents the index 0, and the next smallest 1, and so forth. The {@link Long#MIN_VALUE} key
+   * is used to store all known {@link OffsetRange ranges} allowing us to compute such an ordering.
    */
   @Internal
   public static class AsList<T> extends PTransform<PCollection<T>, PCollectionView<List<T>>> {
@@ -232,16 +252,55 @@ public class View {
         throw new IllegalStateException("Unable to create a side-input view from input", e);
       }
 
-      PCollection<KV<Void, T>> materializationInput =
-          input.apply(new VoidKeyToMultimapMaterialization<>());
       Coder<T> inputCoder = input.getCoder();
+      PCollection<KV<Long, MetaOr<T, OffsetRange>>> materializationInput =
+          input
+              .apply("IndexElements", ParDo.of(new ToListViewDoFn<>()))
+              .setCoder(
+                  KvCoder.of(
+                      BigEndianLongCoder.of(),
+                      MetaOrCoder.create(inputCoder, OffsetRange.Coder.of())));
       PCollectionView<List<T>> view =
           PCollectionViews.listView(
               materializationInput,
               (TypeDescriptorSupplier<T>) inputCoder::getEncodedTypeDescriptor,
-              materializationInput.getWindowingStrategy());
+              input.getWindowingStrategy());
       materializationInput.apply(CreatePCollectionView.of(view));
       return view;
+    }
+  }
+
+  /**
+   * Provides an index to value mapping using a random starting index and also provides an offset
+   * range for each window seen. We use random offset ranges to minimize the chance that two ranges
+   * overlap increasing the odds that each "key" represents a single index.
+   */
+  private static class ToListViewDoFn<T> extends DoFn<T, KV<Long, MetaOr<T, OffsetRange>>> {
+    private Map<BoundedWindow, OffsetRange> windowsToOffsets = new HashMap<>();
+
+    private OffsetRange generateRange(BoundedWindow window) {
+      long offset =
+          ThreadLocalRandom.current()
+              .nextLong(Long.MIN_VALUE + 1, Long.MAX_VALUE - Integer.MAX_VALUE);
+      return new OffsetRange(offset, offset);
+    }
+
+    @ProcessElement
+    public void processElement(ProcessContext c, BoundedWindow window) {
+      OffsetRange range = windowsToOffsets.computeIfAbsent(window, this::generateRange);
+      c.output(KV.of(range.getTo(), MetaOr.create(c.element())));
+      windowsToOffsets.put(window, new OffsetRange(range.getFrom(), range.getTo() + 1));
+    }
+
+    @FinishBundle
+    public void finishBundle(FinishBundleContext c) {
+      for (Map.Entry<BoundedWindow, OffsetRange> entry : windowsToOffsets.entrySet()) {
+        c.output(
+            KV.of(Long.MIN_VALUE, MetaOr.createMetadata(entry.getValue())),
+            entry.getKey().maxTimestamp(),
+            entry.getKey());
+      }
+      windowsToOffsets.clear();
     }
   }
 
@@ -265,15 +324,13 @@ public class View {
         throw new IllegalStateException("Unable to create a side-input view from input", e);
       }
 
-      PCollection<KV<Void, T>> materializationInput =
-          input.apply(new VoidKeyToMultimapMaterialization<>());
       Coder<T> inputCoder = input.getCoder();
       PCollectionView<Iterable<T>> view =
           PCollectionViews.iterableView(
-              materializationInput,
+              input,
               (TypeDescriptorSupplier<T>) inputCoder::getEncodedTypeDescriptor,
-              materializationInput.getWindowingStrategy());
-      materializationInput.apply(CreatePCollectionView.of(view));
+              input.getWindowingStrategy());
+      input.apply(CreatePCollectionView.of(view));
       return view;
     }
   }
@@ -412,15 +469,13 @@ public class View {
       KvCoder<K, V> kvCoder = (KvCoder<K, V>) input.getCoder();
       Coder<K> keyCoder = kvCoder.getKeyCoder();
       Coder<V> valueCoder = kvCoder.getValueCoder();
-      PCollection<KV<Void, KV<K, V>>> materializationInput =
-          input.apply(new VoidKeyToMultimapMaterialization<>());
       PCollectionView<Map<K, Iterable<V>>> view =
           PCollectionViews.multimapView(
-              materializationInput,
+              input,
               (TypeDescriptorSupplier<K>) keyCoder::getEncodedTypeDescriptor,
               (TypeDescriptorSupplier<V>) valueCoder::getEncodedTypeDescriptor,
-              materializationInput.getWindowingStrategy());
-      materializationInput.apply(CreatePCollectionView.of(view));
+              input.getWindowingStrategy());
+      input.apply(CreatePCollectionView.of(view));
       return view;
     }
   }
@@ -455,15 +510,13 @@ public class View {
       Coder<K> keyCoder = kvCoder.getKeyCoder();
       Coder<V> valueCoder = kvCoder.getValueCoder();
 
-      PCollection<KV<Void, KV<K, V>>> materializationInput =
-          input.apply(new VoidKeyToMultimapMaterialization<>());
       PCollectionView<Map<K, V>> view =
           PCollectionViews.mapView(
-              materializationInput,
+              input,
               (TypeDescriptorSupplier<K>) keyCoder::getEncodedTypeDescriptor,
               (TypeDescriptorSupplier<V>) valueCoder::getEncodedTypeDescriptor,
-              materializationInput.getWindowingStrategy());
-      materializationInput.apply(CreatePCollectionView.of(view));
+              input.getWindowingStrategy());
+      input.apply(CreatePCollectionView.of(view));
       return view;
     }
   }

@@ -464,7 +464,6 @@ public class RemoteExecutionTest implements Serializable {
               (Coder<WindowedValue<?>>) remoteOutputCoder.getValue(), outputContents::add));
     }
 
-    Iterable<String> sideInputData = Arrays.asList("A", "B", "C");
     StateRequestHandler stateRequestHandler =
         StateRequestHandlers.forSideInputHandlerFactory(
             descriptor.getSideInputSpecs(),
@@ -476,7 +475,17 @@ public class RemoteExecutionTest implements Serializable {
                       String sideInputId,
                       Coder<V> elementCoder,
                       Coder<W> windowCoder) {
-                throw new UnsupportedOperationException();
+                return new IterableSideInputHandler<V, W>() {
+                  @Override
+                  public Iterable<V> get(W window) {
+                    return (Iterable) Arrays.asList("A", "B", "C");
+                  }
+
+                  @Override
+                  public Coder<V> elementCoder() {
+                    return elementCoder;
+                  }
+                };
               }
 
               @Override
@@ -486,27 +495,7 @@ public class RemoteExecutionTest implements Serializable {
                       String sideInputId,
                       KvCoder<K, V> elementCoder,
                       Coder<W> windowCoder) {
-                return new MultimapSideInputHandler<K, V, W>() {
-                  @Override
-                  public Iterable<K> get(W window) {
-                    throw new UnsupportedOperationException();
-                  }
-
-                  @Override
-                  public Iterable<V> get(K key, W window) {
-                    return (Iterable) sideInputData;
-                  }
-
-                  @Override
-                  public Coder<K> keyCoder() {
-                    return elementCoder.getKeyCoder();
-                  }
-
-                  @Override
-                  public Coder<V> valueCoder() {
-                    return elementCoder.getValueCoder();
-                  }
-                };
+                throw new UnsupportedOperationException();
               }
             });
     BundleProgressHandler progressHandler = BundleProgressHandler.ignored();

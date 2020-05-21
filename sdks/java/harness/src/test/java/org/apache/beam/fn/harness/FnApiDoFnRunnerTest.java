@@ -395,9 +395,9 @@ public class FnApiDoFnRunnerTest implements Serializable {
 
     ImmutableMap<StateKey, ByteString> stateData =
         ImmutableMap.of(
-            multimapSideInputKey(singletonSideInputView.getTagInternal().getId(), ByteString.EMPTY),
+            iterableSideInputKey(singletonSideInputView.getTagInternal().getId()),
             encode("singletonValue"),
-            multimapSideInputKey(iterableSideInputView.getTagInternal().getId(), ByteString.EMPTY),
+            iterableSideInputKey(iterableSideInputView.getTagInternal().getId()),
             encode("iterableValue1", "iterableValue2", "iterableValue3"));
 
     FakeBeamFnStateClient fakeClient = new FakeBeamFnStateClient(stateData);
@@ -539,11 +539,9 @@ public class FnApiDoFnRunnerTest implements Serializable {
 
     ImmutableMap<StateKey, ByteString> stateData =
         ImmutableMap.of(
-            multimapSideInputKey(
-                iterableSideInputView.getTagInternal().getId(), ByteString.EMPTY, encodedWindowA),
+            iterableSideInputKey(iterableSideInputView.getTagInternal().getId(), encodedWindowA),
             encode("iterableValue1A", "iterableValue2A", "iterableValue3A"),
-            multimapSideInputKey(
-                iterableSideInputView.getTagInternal().getId(), ByteString.EMPTY, encodedWindowB),
+            iterableSideInputKey(iterableSideInputView.getTagInternal().getId(), encodedWindowB),
             encode("iterableValue1B", "iterableValue2B", "iterableValue3B"));
 
     FakeBeamFnStateClient fakeClient = new FakeBeamFnStateClient(stateData);
@@ -657,11 +655,9 @@ public class FnApiDoFnRunnerTest implements Serializable {
 
     ImmutableMap<StateKey, ByteString> stateData =
         ImmutableMap.of(
-            multimapSideInputKey(
-                iterableSideInputView.getTagInternal().getId(), ByteString.EMPTY, encodedWindowA),
+            iterableSideInputKey(iterableSideInputView.getTagInternal().getId(), encodedWindowA),
             encode("iterableValue1A", "iterableValue2A", "iterableValue3A"),
-            multimapSideInputKey(
-                iterableSideInputView.getTagInternal().getId(), ByteString.EMPTY, encodedWindowB),
+            iterableSideInputKey(iterableSideInputView.getTagInternal().getId(), encodedWindowB),
             encode("iterableValue1B", "iterableValue2B", "iterableValue3B"));
 
     FakeBeamFnStateClient fakeClient = new FakeBeamFnStateClient(stateData);
@@ -992,28 +988,26 @@ public class FnApiDoFnRunnerTest implements Serializable {
   }
 
   /**
-   * Produces a multimap side input {@link StateKey} for the test PTransform id in the global
+   * Produces an iterable side input {@link StateKey} for the test PTransform id in the global
    * window.
    */
-  private StateKey multimapSideInputKey(String sideInputId, ByteString key) throws IOException {
-    return multimapSideInputKey(
+  private StateKey iterableSideInputKey(String sideInputId) throws IOException {
+    return iterableSideInputKey(
         sideInputId,
-        key,
         ByteString.copyFrom(
             CoderUtils.encodeToByteArray(GlobalWindow.Coder.INSTANCE, GlobalWindow.INSTANCE)));
   }
 
   /**
-   * Produces a multimap side input {@link StateKey} for the test PTransform id in the supplied
+   * Produces an iterable side input {@link StateKey} for the test PTransform id in the supplied
    * window.
    */
-  private StateKey multimapSideInputKey(String sideInputId, ByteString key, ByteString windowKey) {
+  private StateKey iterableSideInputKey(String sideInputId, ByteString windowKey) {
     return StateKey.newBuilder()
-        .setMultimapSideInput(
-            StateKey.MultimapSideInput.newBuilder()
+        .setIterableSideInput(
+            StateKey.IterableSideInput.newBuilder()
                 .setTransformId(TEST_TRANSFORM_ID)
                 .setSideInputId(sideInputId)
-                .setKey(key)
                 .setWindow(windowKey))
         .build();
   }
@@ -1207,7 +1201,7 @@ public class FnApiDoFnRunnerTest implements Serializable {
 
     ImmutableMap<StateKey, ByteString> stateData =
         ImmutableMap.of(
-            multimapSideInputKey(singletonSideInputView.getTagInternal().getId(), ByteString.EMPTY),
+            iterableSideInputKey(singletonSideInputView.getTagInternal().getId(), ByteString.EMPTY),
             encode("8"));
 
     FakeBeamFnStateClient fakeClient = new FakeBeamFnStateClient(stateData);
