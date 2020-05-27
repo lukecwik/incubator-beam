@@ -21,7 +21,6 @@ import static org.junit.Assert.assertThat;
 
 import org.apache.beam.model.pipeline.v1.RunnerApi.FunctionSpec;
 import org.apache.beam.sdk.coders.BigEndianLongCoder;
-import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.range.OffsetRange;
@@ -56,8 +55,12 @@ public class CreatePCollectionViewTranslationTest {
   public static Iterable<Object[]> data() {
     PCollection<String> singletonTestPCollection = p.apply(Create.of("one"));
     PCollection<KV<Long, MetaOr<String, OffsetRange>>> listTestPCollection =
-        p.apply(Create.of(KV.of(0L, MetaOr.<String, OffsetRange>create("one"))).withCoder(KvCoder.of(BigEndianLongCoder.of(),
-            MetaOrCoder.create(StringUtf8Coder.of(), OffsetRange.Coder.of()))));
+        p.apply(
+            Create.of(KV.of(0L, MetaOr.<String, OffsetRange>create("one")))
+                .withCoder(
+                    KvCoder.of(
+                        BigEndianLongCoder.of(),
+                        MetaOrCoder.create(StringUtf8Coder.of(), OffsetRange.Coder.of()))));
 
     return ImmutableList.of(
         new Object[] {

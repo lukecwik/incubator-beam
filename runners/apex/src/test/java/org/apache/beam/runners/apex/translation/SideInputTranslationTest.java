@@ -41,7 +41,6 @@ import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.coders.ListCoder;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.coders.VarIntCoder;
-import org.apache.beam.sdk.coders.VoidCoder;
 import org.apache.beam.sdk.io.range.OffsetRange;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.testing.PAssert;
@@ -115,24 +114,24 @@ public class SideInputTranslationTest implements Serializable {
   @Test
   public void testListSideInputTranslation() throws Exception {
     assertEquals(
-        ListCoder.of(KvCoder.of(BigEndianLongCoder.of(), MetaOrCoder.create(VarIntCoder.of(),
-            OffsetRange.Coder.of()))),
+        ListCoder.of(
+            KvCoder.of(
+                BigEndianLongCoder.of(),
+                MetaOrCoder.create(VarIntCoder.of(), OffsetRange.Coder.of()))),
         getTranslatedSideInputCoder(ImmutableList.of(11, 13, 17, 23), View.asList()));
   }
 
   @Test
   public void testMapSideInputTranslation() throws Exception {
     assertEquals(
-        ListCoder.of(
-            KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of())),
+        ListCoder.of(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of())),
         getTranslatedSideInputCoder(ImmutableList.of(KV.of("a", 1), KV.of("b", 3)), View.asMap()));
   }
 
   @Test
   public void testMultimapSideInputTranslation() throws Exception {
     assertEquals(
-        ListCoder.of(
-            KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of())),
+        ListCoder.of(KvCoder.of(StringUtf8Coder.of(), VarIntCoder.of())),
         getTranslatedSideInputCoder(
             ImmutableList.of(KV.of("a", 1), KV.of("a", 2), KV.of("b", 3)), View.asMultimap()));
   }

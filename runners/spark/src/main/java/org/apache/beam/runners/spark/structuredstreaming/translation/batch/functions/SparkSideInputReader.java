@@ -40,7 +40,6 @@ import org.apache.beam.sdk.transforms.Materializations.MultimapView;
 import org.apache.beam.sdk.transforms.ViewFn;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.util.WindowedValue;
-import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.WindowingStrategy;
@@ -48,8 +47,10 @@ import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Immutabl
 
 /** A {@link SideInputReader} for the Spark Batch Runner. */
 public class SparkSideInputReader implements SideInputReader {
-  private static final Set<String> SUPPORTED_MATERIALIZATIONS = ImmutableSet
-      .of(Materializations.ITERABLE_MATERIALIZATION_URN, Materializations.MULTIMAP_MATERIALIZATION_URN);
+  private static final Set<String> SUPPORTED_MATERIALIZATIONS =
+      ImmutableSet.of(
+          Materializations.ITERABLE_MATERIALIZATION_URN,
+          Materializations.MULTIMAP_MATERIALIZATION_URN);
 
   private final Map<TupleTag<?>, WindowingStrategy<?, ?>> sideInputs;
   private final SideInputBroadcast broadcastStateData;
@@ -59,8 +60,7 @@ public class SparkSideInputReader implements SideInputReader {
       SideInputBroadcast broadcastStateData) {
     for (PCollectionView<?> view : indexByView.keySet()) {
       checkArgument(
-          SUPPORTED_MATERIALIZATIONS.contains(
-              view.getViewFn().getMaterialization().getUrn()),
+          SUPPORTED_MATERIALIZATIONS.contains(view.getViewFn().getMaterialization().getUrn()),
           "This handler is only capable of dealing with %s materializations "
               + "but was asked to handle %s for PCollectionView with tag %s.",
           SUPPORTED_MATERIALIZATIONS,
@@ -94,17 +94,20 @@ public class SparkSideInputReader implements SideInputReader {
     T result = sideInputs.get(window);
     if (result == null) {
       switch (view.getViewFn().getMaterialization().getUrn()) {
-        case Materializations.ITERABLE_MATERIALIZATION_URN: {
-          ViewFn<IterableView, T> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
-          return viewFn.apply(() -> Collections.emptyList());
-        }
-        case Materializations.MULTIMAP_MATERIALIZATION_URN: {
-          ViewFn<MultimapView, T> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
-          return viewFn.apply(InMemoryMultimapSideInputView.empty());
-        }
+        case Materializations.ITERABLE_MATERIALIZATION_URN:
+          {
+            ViewFn<IterableView, T> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
+            return viewFn.apply(() -> Collections.emptyList());
+          }
+        case Materializations.MULTIMAP_MATERIALIZATION_URN:
+          {
+            ViewFn<MultimapView, T> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
+            return viewFn.apply(InMemoryMultimapSideInputView.empty());
+          }
         default:
-          throw new IllegalStateException(String
-              .format("Unknown side input materialization format requested '%s'",
+          throw new IllegalStateException(
+              String.format(
+                  "Unknown side input materialization format requested '%s'",
                   view.getViewFn().getMaterialization().getUrn()));
       }
     }
@@ -140,32 +143,35 @@ public class SparkSideInputReader implements SideInputReader {
         partitionedElements.entrySet()) {
 
       switch (view.getViewFn().getMaterialization().getUrn()) {
-        case Materializations.ITERABLE_MATERIALIZATION_URN: {
-          ViewFn<IterableView, T> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
-          resultMap.put(
-              elements.getKey(),
-              viewFn.apply(() ->
-                  elements.getValue().stream()
-                      .map(WindowedValue::getValue)
-                      .collect(Collectors.toList())));
-        }
-        case Materializations.MULTIMAP_MATERIALIZATION_URN: {
-          ViewFn<MultimapView, T> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
-          Coder<?> keyCoder = ((KvCoder<?, ?>) view.getCoderInternal()).getKeyCoder();
-          resultMap.put(
-              elements.getKey(),
-
-              viewFn.apply(
-                  InMemoryMultimapSideInputView.fromIterable(
-                      keyCoder,
-                      (Iterable)
-                          elements.getValue().stream()
-                              .map(WindowedValue::getValue)
-                              .collect(Collectors.toList()))));
-        }
+        case Materializations.ITERABLE_MATERIALIZATION_URN:
+          {
+            ViewFn<IterableView, T> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
+            resultMap.put(
+                elements.getKey(),
+                viewFn.apply(
+                    () ->
+                        elements.getValue().stream()
+                            .map(WindowedValue::getValue)
+                            .collect(Collectors.toList())));
+          }
+        case Materializations.MULTIMAP_MATERIALIZATION_URN:
+          {
+            ViewFn<MultimapView, T> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
+            Coder<?> keyCoder = ((KvCoder<?, ?>) view.getCoderInternal()).getKeyCoder();
+            resultMap.put(
+                elements.getKey(),
+                viewFn.apply(
+                    InMemoryMultimapSideInputView.fromIterable(
+                        keyCoder,
+                        (Iterable)
+                            elements.getValue().stream()
+                                .map(WindowedValue::getValue)
+                                .collect(Collectors.toList()))));
+          }
         default:
-          throw new IllegalStateException(String
-              .format("Unknown side input materialization format requested '%s'",
+          throw new IllegalStateException(
+              String.format(
+                  "Unknown side input materialization format requested '%s'",
                   view.getViewFn().getMaterialization().getUrn()));
       }
     }

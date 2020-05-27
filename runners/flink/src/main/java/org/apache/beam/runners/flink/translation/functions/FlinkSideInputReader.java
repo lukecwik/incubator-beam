@@ -40,8 +40,10 @@ import org.apache.flink.api.common.functions.RuntimeContext;
 
 /** A {@link SideInputReader} for the Flink Batch Runner. */
 public class FlinkSideInputReader implements SideInputReader {
-  private static final Set<String> SUPPORTED_MATERIALIZATIONS = ImmutableSet
-      .of(Materializations.ITERABLE_MATERIALIZATION_URN, Materializations.MULTIMAP_MATERIALIZATION_URN);
+  private static final Set<String> SUPPORTED_MATERIALIZATIONS =
+      ImmutableSet.of(
+          Materializations.ITERABLE_MATERIALIZATION_URN,
+          Materializations.MULTIMAP_MATERIALIZATION_URN);
 
   private final Map<TupleTag<?>, WindowingStrategy<?, ?>> sideInputs;
 
@@ -51,8 +53,7 @@ public class FlinkSideInputReader implements SideInputReader {
       Map<PCollectionView<?>, WindowingStrategy<?, ?>> indexByView, RuntimeContext runtimeContext) {
     for (PCollectionView<?> view : indexByView.keySet()) {
       checkArgument(
-          SUPPORTED_MATERIALIZATIONS.contains(
-              view.getViewFn().getMaterialization().getUrn()),
+          SUPPORTED_MATERIALIZATIONS.contains(view.getViewFn().getMaterialization().getUrn()),
           "This handler is only capable of dealing with %s materializations "
               + "but was asked to handle %s for PCollectionView with tag %s.",
           SUPPORTED_MATERIALIZATIONS,
@@ -79,17 +80,20 @@ public class FlinkSideInputReader implements SideInputReader {
     T result = sideInputs.get(window);
     if (result == null) {
       switch (view.getViewFn().getMaterialization().getUrn()) {
-        case Materializations.ITERABLE_MATERIALIZATION_URN: {
-          ViewFn<IterableView, T> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
-          return viewFn.apply(() -> Collections.emptyList());
-        }
-        case Materializations.MULTIMAP_MATERIALIZATION_URN: {
-          ViewFn<MultimapView, T> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
-          return viewFn.apply(InMemoryMultimapSideInputView.empty());
-        }
+        case Materializations.ITERABLE_MATERIALIZATION_URN:
+          {
+            ViewFn<IterableView, T> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
+            return viewFn.apply(() -> Collections.emptyList());
+          }
+        case Materializations.MULTIMAP_MATERIALIZATION_URN:
+          {
+            ViewFn<MultimapView, T> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
+            return viewFn.apply(InMemoryMultimapSideInputView.empty());
+          }
         default:
-          throw new IllegalStateException(String
-              .format("Unknown side input materialization format requested '%s'",
+          throw new IllegalStateException(
+              String.format(
+                  "Unknown side input materialization format requested '%s'",
                   view.getViewFn().getMaterialization().getUrn()));
       }
     }

@@ -34,7 +34,6 @@ import org.apache.beam.sdk.transforms.Materializations.MultimapView;
 import org.apache.beam.sdk.transforms.ViewFn;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.util.WindowedValue;
-import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableSet;
 import org.apache.flink.api.common.functions.BroadcastVariableInitializer;
@@ -45,15 +44,16 @@ import org.apache.flink.api.common.functions.BroadcastVariableInitializer;
  */
 public class SideInputInitializer<ViewT>
     implements BroadcastVariableInitializer<WindowedValue<?>, Map<BoundedWindow, ViewT>> {
-  private static final Set<String> SUPPORTED_MATERIALIZATIONS = ImmutableSet
-      .of(Materializations.ITERABLE_MATERIALIZATION_URN, Materializations.MULTIMAP_MATERIALIZATION_URN);
+  private static final Set<String> SUPPORTED_MATERIALIZATIONS =
+      ImmutableSet.of(
+          Materializations.ITERABLE_MATERIALIZATION_URN,
+          Materializations.MULTIMAP_MATERIALIZATION_URN);
 
   PCollectionView<ViewT> view;
 
   public SideInputInitializer(PCollectionView<ViewT> view) {
     checkArgument(
-        SUPPORTED_MATERIALIZATIONS.contains(
-            view.getViewFn().getMaterialization().getUrn()),
+        SUPPORTED_MATERIALIZATIONS.contains(view.getViewFn().getMaterialization().getUrn()),
         "This handler is only capable of dealing with %s materializations "
             + "but was asked to handle %s for PCollectionView with tag %s.",
         SUPPORTED_MATERIALIZATIONS,
@@ -81,32 +81,35 @@ public class SideInputInitializer<ViewT>
     for (Map.Entry<BoundedWindow, List<WindowedValue<?>>> elements :
         partitionedElements.entrySet()) {
       switch (view.getViewFn().getMaterialization().getUrn()) {
-        case Materializations.ITERABLE_MATERIALIZATION_URN: {
-          ViewFn<IterableView, ViewT> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
-          resultMap.put(
-              elements.getKey(),
-              viewFn.apply(() ->
-                  elements.getValue().stream()
-                      .map(WindowedValue::getValue)
-                      .collect(Collectors.toList())));
-        }
-        case Materializations.MULTIMAP_MATERIALIZATION_URN: {
-          ViewFn<MultimapView, ViewT> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
-          Coder<?> keyCoder = ((KvCoder<?, ?>) view.getCoderInternal()).getKeyCoder();
-          resultMap.put(
-              elements.getKey(),
-
-              viewFn.apply(
-                  InMemoryMultimapSideInputView.fromIterable(
-                      keyCoder,
-                      (Iterable)
-                          elements.getValue().stream()
-                              .map(WindowedValue::getValue)
-                              .collect(Collectors.toList()))));
-        }
+        case Materializations.ITERABLE_MATERIALIZATION_URN:
+          {
+            ViewFn<IterableView, ViewT> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
+            resultMap.put(
+                elements.getKey(),
+                viewFn.apply(
+                    () ->
+                        elements.getValue().stream()
+                            .map(WindowedValue::getValue)
+                            .collect(Collectors.toList())));
+          }
+        case Materializations.MULTIMAP_MATERIALIZATION_URN:
+          {
+            ViewFn<MultimapView, ViewT> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
+            Coder<?> keyCoder = ((KvCoder<?, ?>) view.getCoderInternal()).getKeyCoder();
+            resultMap.put(
+                elements.getKey(),
+                viewFn.apply(
+                    InMemoryMultimapSideInputView.fromIterable(
+                        keyCoder,
+                        (Iterable)
+                            elements.getValue().stream()
+                                .map(WindowedValue::getValue)
+                                .collect(Collectors.toList()))));
+          }
         default:
-          throw new IllegalStateException(String
-              .format("Unknown side input materialization format requested '%s'",
+          throw new IllegalStateException(
+              String.format(
+                  "Unknown side input materialization format requested '%s'",
                   view.getViewFn().getMaterialization().getUrn()));
       }
     }

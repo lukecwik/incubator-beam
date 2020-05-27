@@ -57,7 +57,10 @@ import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Sets;
  * and writing to a {@link PCollectionView}.
  */
 class SideInputContainer {
-  private static final Set<String> SUPPORTED_MATERIALIZATIONS = ImmutableSet.of(Materializations.ITERABLE_MATERIALIZATION_URN, Materializations.MULTIMAP_MATERIALIZATION_URN);
+  private static final Set<String> SUPPORTED_MATERIALIZATIONS =
+      ImmutableSet.of(
+          Materializations.ITERABLE_MATERIALIZATION_URN,
+          Materializations.MULTIMAP_MATERIALIZATION_URN);
 
   private final Collection<PCollectionView<?>> containedViews;
   private final LoadingCache<
@@ -260,19 +263,22 @@ class SideInputContainer {
 
       switch (view.getViewFn().getMaterialization().getUrn()) {
         case Materializations.ITERABLE_MATERIALIZATION_URN:
-        {
-          ViewFn<IterableView, T> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
-          return viewFn.apply(() -> elements);
-        }
+          {
+            ViewFn<IterableView, T> viewFn = (ViewFn<IterableView, T>) view.getViewFn();
+            return viewFn.apply(() -> elements);
+          }
         case Materializations.MULTIMAP_MATERIALIZATION_URN:
-        {
-          ViewFn<MultimapView, T> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
-          Coder<?> keyCoder = ((KvCoder<?, ?>) view.getCoderInternal()).getKeyCoder();
-          return
-              viewFn.apply(InMemoryMultimapSideInputView.fromIterable(keyCoder, (Iterable) elements));
-        }
+          {
+            ViewFn<MultimapView, T> viewFn = (ViewFn<MultimapView, T>) view.getViewFn();
+            Coder<?> keyCoder = ((KvCoder<?, ?>) view.getCoderInternal()).getKeyCoder();
+            return viewFn.apply(
+                InMemoryMultimapSideInputView.fromIterable(keyCoder, (Iterable) elements));
+          }
         default:
-          throw new IllegalStateException(String.format("Unknown side input materialization format requested '%s'", view.getViewFn().getMaterialization().getUrn()));
+          throw new IllegalStateException(
+              String.format(
+                  "Unknown side input materialization format requested '%s'",
+                  view.getViewFn().getMaterialization().getUrn()));
       }
     }
 
