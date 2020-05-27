@@ -453,6 +453,8 @@ public class RegisterAndProcessBundleOperation extends Operation {
     switch (stateRequest.getStateKey().getTypeCase()) {
       case BAG_USER_STATE:
         return handleBagUserState(stateRequest);
+      case ITERABLE_SIDE_INPUT:
+        return handleIterableSideInput(stateRequest);
       case MULTIMAP_SIDE_INPUT:
         return handleMultimapSideInput(stateRequest);
       default:
@@ -460,6 +462,81 @@ public class RegisterAndProcessBundleOperation extends Operation {
             String.format(
                 "Dataflow does not handle StateRequests of type %s",
                 stateRequest.getStateKey().getTypeCase()));
+    }
+  }
+
+  private CompletionStage<BeamFnApi.StateResponse.Builder> handleIterableSideInput(
+      StateRequest stateRequest) {
+    checkState(
+        stateRequest.getRequestCase() == RequestCase.GET,
+        String.format(
+            "IterableSideInput state requests only support '%s' requests, received '%s'",
+            RequestCase.GET, stateRequest.getRequestCase()));
+
+    StateKey.IterableSideInput iterableSideInputStateKey =
+        stateRequest.getStateKey().getIterableSideInput();
+
+    SideInputReader sideInputReader =
+        ptransformIdToSideInputReader.get(iterableSideInputStateKey.getTransformId());
+    checkState(
+        sideInputReader != null,
+        String.format("Unknown PTransform '%s'", iterableSideInputStateKey.getTransformId()));
+
+    PCollectionView<Materializations.IterableView<Object>> view =
+        (PCollectionView<Materializations.IterableView<Object>>)
+            ptransformIdToSideInputIdToPCollectionView.get(
+                iterableSideInputStateKey.getTransformId(),
+                iterableSideInputStateKey.getSideInputId());
+    checkState(
+        view != null,
+        String.format(
+            "Unknown side input '%s' on PTransform '%s'",
+            iterableSideInputStateKey.getSideInputId(),
+            iterableSideInputStateKey.getTransformId()));
+    checkState(
+        Materializations.ITERABLE_MATERIALIZATION_URN.equals(
+            view.getViewFn().getMaterialization().getUrn()),
+        String.format(
+            "Unknown materialization for side input '%s' on PTransform '%s' with urn '%s'",
+            iterableSideInputStateKey.getSideInputId(),
+            iterableSideInputStateKey.getTransformId(),
+            view.getViewFn().getMaterialization().getUrn()));
+
+    BoundedWindow window;
+    try {
+      // TODO: Use EncodedWindow instead of decoding the window.
+      window =
+          view.getWindowingStrategyInternal()
+              .getWindowFn()
+              .windowCoder()
+              .decode(iterableSideInputStateKey.getWindow().newInput());
+    } catch (IOException e) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Unable to decode window for side input '%s' on PTransform '%s'.",
+              iterableSideInputStateKey.getSideInputId(),
+              iterableSideInputStateKey.getTransformId()),
+          e);
+    }
+
+    Materializations.IterableView<Object> sideInput = sideInputReader.get(view, window);
+    Iterable<Object> values = sideInput.get();
+    try {
+      // TODO: Chunk the requests and use a continuation key to support side input values
+      // that are larger then 2 GiBs.
+      // TODO: Use the raw value so we don't go through a decode/encode cycle for no reason.
+      return CompletableFuture.completedFuture(
+          StateResponse.newBuilder()
+              .setGet(
+                  StateGetResponse.newBuilder()
+                      .setData(encodeAndConcat(values, view.getCoderInternal()))));
+    } catch (IOException e) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Unable to encode values for side input '%s' on PTransform '%s'.",
+              iterableSideInputStateKey.getSideInputId(),
+              iterableSideInputStateKey.getTransformId()),
+          e);
     }
   }
 

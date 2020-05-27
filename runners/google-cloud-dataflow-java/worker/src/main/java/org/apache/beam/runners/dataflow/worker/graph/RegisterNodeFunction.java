@@ -74,7 +74,6 @@ import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.fn.IdGenerator;
 import org.apache.beam.sdk.transforms.Materializations;
 import org.apache.beam.sdk.util.WindowedValue.FullWindowedValueCoder;
-import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.TupleTag;
 import org.apache.beam.sdk.values.WindowingStrategy;
@@ -82,6 +81,7 @@ import org.apache.beam.vendor.grpc.v1p26p0.com.google.protobuf.ByteString;
 import org.apache.beam.vendor.grpc.v1p26p0.com.google.protobuf.InvalidProtocolBufferException;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableList;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableMap;
+import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableSet;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Iterables;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.graph.MutableNetwork;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.graph.Network;
@@ -93,6 +93,11 @@ import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.graph.Network;
  * <p>Testing of all the layers of translation are performed via local service runner tests.
  */
 public class RegisterNodeFunction implements Function<MutableNetwork<Node, Edge>, Node> {
+  private static final Set<String> SUPPORTED_MATERIALIZATIONS =
+      ImmutableSet.of(
+          Materializations.ITERABLE_MATERIALIZATION_URN,
+          Materializations.MULTIMAP_MATERIALIZATION_URN);
+
   /** Must match declared fields within {@code ProcessBundleHandler}. */
   private static final String DATA_INPUT_URN = "beam:runner:source:v1";
 
@@ -534,24 +539,24 @@ public class RegisterNodeFunction implements Function<MutableNetwork<Node, Edge>
       String sideInputTag,
       RunnerApi.SideInput sideInput) {
     checkArgument(
-        Materializations.MULTIMAP_MATERIALIZATION_URN.equals(sideInput.getAccessPattern().getUrn()),
+        SUPPORTED_MATERIALIZATIONS.contains(sideInput.getAccessPattern().getUrn()),
         "This handler is only capable of dealing with %s materializations "
             + "but was asked to handle %s for PCollectionView with tag %s.",
-        Materializations.MULTIMAP_MATERIALIZATION_URN,
+        SUPPORTED_MATERIALIZATIONS,
         sideInput.getAccessPattern().getUrn(),
         sideInputTag);
     String sideInputPCollectionId = parDoPTransform.getInputsOrThrow(sideInputTag);
     RunnerApi.PCollection sideInputPCollection =
         pipeline.getComponents().getPcollectionsOrThrow(sideInputPCollectionId);
     try {
-      FullWindowedValueCoder<KV<Object, Object>> runnerSideInputCoder =
+      FullWindowedValueCoder<?> runnerSideInputCoder =
           (FullWindowedValueCoder)
               WireCoders.instantiateRunnerWireCoder(
                   PipelineNode.pCollection(sideInputPCollectionId, sideInputPCollection),
                   pipeline.getComponents());
 
       return DataflowPortabilityPCollectionView.with(
-          new TupleTag<>(sideInputTag), runnerSideInputCoder);
+          new TupleTag<>(sideInputTag), runnerSideInputCoder, sideInput.getAccessPattern());
     } catch (IOException e) {
       throw new IllegalStateException("Unable to translate proto to coder", e);
     }

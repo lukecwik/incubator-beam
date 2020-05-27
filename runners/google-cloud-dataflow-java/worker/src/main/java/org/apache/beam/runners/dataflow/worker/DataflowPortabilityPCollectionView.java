@@ -24,15 +24,12 @@ import org.apache.beam.runners.core.SideInputReader;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.transforms.Materialization;
-import org.apache.beam.sdk.transforms.Materializations;
-import org.apache.beam.sdk.transforms.Materializations.MultimapView;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.ViewFn;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.transforms.windowing.WindowFn;
 import org.apache.beam.sdk.transforms.windowing.WindowMappingFn;
 import org.apache.beam.sdk.util.WindowedValue.FullWindowedValueCoder;
-import org.apache.beam.sdk.values.KV;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.PInput;
@@ -53,21 +50,23 @@ import org.apache.beam.sdk.values.WindowingStrategy;
  * <p>TODO: Migrate to a runner only specific concept of a side input to be used with {@link
  * SideInputReader}s.
  */
-public class DataflowPortabilityPCollectionView<K, V, W extends BoundedWindow>
-    implements PCollectionView<MultimapView<K, V>> {
+public class DataflowPortabilityPCollectionView<ViewT, W extends BoundedWindow>
+    implements PCollectionView<ViewT> {
 
-  public static <K, V> PCollectionView<MultimapView<K, V>> with(
-      TupleTag<KV<K, V>> tag, FullWindowedValueCoder<KV<K, V>> coder) {
-    return new DataflowPortabilityPCollectionView(tag, coder);
+  public static <ViewT> PCollectionView<ViewT> with(
+      TupleTag<?> tag, FullWindowedValueCoder<?> coder, Materialization<ViewT> materialization) {
+    return new DataflowPortabilityPCollectionView(tag, coder, materialization);
   }
 
-  private final TupleTag<KV<K, V>> tag;
-  private final FullWindowedValueCoder<KV<K, V>> coder;
+  private final TupleTag<?> tag;
+  private final FullWindowedValueCoder<?> coder;
+  private final ViewFn<?, ViewT> viewFn;
 
   private DataflowPortabilityPCollectionView(
-      TupleTag<KV<K, V>> tag, FullWindowedValueCoder<KV<K, V>> coder) {
+      TupleTag<?> tag, FullWindowedValueCoder<?> coder, Materialization<ViewT> materialization) {
     this.tag = tag;
     this.coder = coder;
+    this.viewFn = new PortabilityViewFn<>(materialization);
   }
 
   @Nullable
@@ -77,38 +76,39 @@ public class DataflowPortabilityPCollectionView<K, V, W extends BoundedWindow>
   }
 
   @Override
-  public TupleTag<KV<K, V>> getTagInternal() {
+  public TupleTag<?> getTagInternal() {
     return tag;
   }
 
   @Override
-  public ViewFn<?, MultimapView<K, V>> getViewFn() {
-    return (ViewFn) PortabilityViewFn.INSTANCE;
+  public ViewFn<?, ViewT> getViewFn() {
+    return viewFn;
   }
 
   /**
    * A minimal type {@link ViewFn} that satisfies requirements to be used when executing portable
    * pipelines.
    */
-  public static class PortabilityViewFn<K, V>
-      extends ViewFn<MultimapView<K, V>, MultimapView<K, V>> {
-    private static final PortabilityViewFn<Object, Object> INSTANCE = new PortabilityViewFn<>();
+  public static class PortabilityViewFn<ViewT> extends ViewFn<ViewT, ViewT> {
+    private final Materialization<ViewT> materialization;
 
-    // prevent instantiation
-    private PortabilityViewFn() {}
-
-    @Override
-    public Materialization<MultimapView<K, V>> getMaterialization() {
-      return Materializations.multimap();
+    // prevent instantiation outside of class
+    private PortabilityViewFn(Materialization<ViewT> materialization) {
+      this.materialization = materialization;
     }
 
     @Override
-    public MultimapView<K, V> apply(MultimapView<K, V> o) {
+    public Materialization<ViewT> getMaterialization() {
+      return materialization;
+    }
+
+    @Override
+    public ViewT apply(ViewT o) {
       return o;
     }
 
     @Override
-    public TypeDescriptor<MultimapView<K, V>> getTypeDescriptor() {
+    public TypeDescriptor<ViewT> getTypeDescriptor() {
       throw new UnsupportedOperationException();
     }
   };
@@ -119,9 +119,9 @@ public class DataflowPortabilityPCollectionView<K, V, W extends BoundedWindow>
   }
 
   @Override
-  public WindowingStrategy<KV<K, V>, W> getWindowingStrategyInternal() {
+  public WindowingStrategy<?, W> getWindowingStrategyInternal() {
     return WindowingStrategy.of(
-        new WindowFn<KV<K, V>, W>() {
+        new WindowFn<Object, W>() {
           @Override
           public Collection<W> assignWindows(AssignContext c) throws Exception {
             throw new UnsupportedOperationException();
