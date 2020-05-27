@@ -53,12 +53,7 @@ public class PCollectionViewTranslation {
     TupleTag<?> tag = new TupleTag<>(localName);
     WindowMappingFn<?> windowMappingFn = windowMappingFnFromProto(sideInput.getWindowMappingFn());
     ViewFn<?, ?> viewFn = viewFnFromProto(sideInput.getViewFn());
-
     WindowingStrategy<?, ?> windowingStrategy = pCollection.getWindowingStrategy().fixDefaults();
-    checkArgument(
-        sideInput.getAccessPattern().getUrn().equals(Materializations.MULTIMAP_MATERIALIZATION_URN),
-        "Unknown View Materialization URN %s",
-        sideInput.getAccessPattern().getUrn());
 
     PCollectionView<?> view =
         new RunnerPCollectionView<>(

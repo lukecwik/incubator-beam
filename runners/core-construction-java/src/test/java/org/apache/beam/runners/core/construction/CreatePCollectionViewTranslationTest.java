@@ -20,6 +20,9 @@ package org.apache.beam.runners.core.construction;
 import static org.junit.Assert.assertThat;
 
 import org.apache.beam.model.pipeline.v1.RunnerApi.FunctionSpec;
+import org.apache.beam.sdk.coders.BigEndianLongCoder;
+import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.io.range.OffsetRange;
 import org.apache.beam.sdk.runners.AppliedPTransform;
@@ -32,6 +35,7 @@ import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.PCollectionView;
 import org.apache.beam.sdk.values.PCollectionViews;
 import org.apache.beam.sdk.values.PCollectionViews.ListViewFn.MetaOr;
+import org.apache.beam.sdk.values.PCollectionViews.ListViewFn.MetaOrCoder;
 import org.apache.beam.sdk.values.PCollectionViews.TypeDescriptorSupplier;
 import org.apache.beam.sdk.values.TypeDescriptors;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableList;
@@ -52,7 +56,8 @@ public class CreatePCollectionViewTranslationTest {
   public static Iterable<Object[]> data() {
     PCollection<String> singletonTestPCollection = p.apply(Create.of("one"));
     PCollection<KV<Long, MetaOr<String, OffsetRange>>> listTestPCollection =
-        p.apply(Create.of(KV.of(0L, MetaOr.create("one"))));
+        p.apply(Create.of(KV.of(0L, MetaOr.<String, OffsetRange>create("one"))).withCoder(KvCoder.of(BigEndianLongCoder.of(),
+            MetaOrCoder.create(StringUtf8Coder.of(), OffsetRange.Coder.of()))));
 
     return ImmutableList.of(
         new Object[] {
@@ -80,7 +85,7 @@ public class CreatePCollectionViewTranslationTest {
   public CreatePCollectionView<?, ?> createViewTransform;
 
   @Parameter(1)
-  public PCollection<KV<Long, MetaOr<String, OffsetRange>>> testPCollection;
+  public PCollection<?> testPCollection;
 
   public static TestPipeline p = TestPipeline.create().enableAbandonedNodeEnforcement(false);
 
