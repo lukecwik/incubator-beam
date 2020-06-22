@@ -1043,8 +1043,22 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
 
   private Progress getProgress() {
     synchronized (splitLock) {
-      if (currentTracker instanceof RestrictionTracker.HasProgress) {
-        return ((HasProgress) currentTracker).getProgress();
+      if (currentTracker != null) {
+        Progress progress = currentTracker instanceof RestrictionTracker.HasProgress
+            ? ((HasProgress) currentTracker).getProgress()
+            : Progress.from(0, 1);
+
+        if (currentWindowIterator == null) {
+          return progress;
+        }
+
+        // If we are processing each window individually then compute the progress based upon
+        // which window we are in.
+        double totalWork = progress.getWorkCompleted() + progress.getWorkRemaining();
+        return Progress.from(
+            Math.max(0, currentWindowIterator.previousIndex()) * totalWork + progress.getWorkCompleted(),
+            (currentElement.getWindows().size() - currentWindowIterator.nextIndex()) * totalWork + progress
+                .getWorkRemaining());
       }
     }
     return null;
@@ -1058,6 +1072,14 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       // There is nothing to split if we are between element and restriction processing calls.
       if (currentTracker == null) {
         return null;
+      }
+
+      if (currentWindowIterator != null) {
+        List<BoundedWindow> residualWindows = new ArrayList<>();
+        Progress progress = getProgress();
+        double remainingAmountOfWork = progress.getWorkRemaining() * fractionOfRemainder;
+        int numberOfElementsInResidual = (int) remainingAmountOfWork;
+        fractionOfRemainder = (remainingAmountOfWork - numberOfElementsInResidual) / progress.getWorkRemaining();
       }
 
       // Make sure to get the output watermark before we split to ensure that the lower bound
