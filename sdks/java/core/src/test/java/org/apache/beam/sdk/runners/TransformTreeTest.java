@@ -38,6 +38,7 @@ import org.apache.beam.sdk.transforms.Combine;
 import org.apache.beam.sdk.transforms.Count;
 import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.Flatten;
+import org.apache.beam.sdk.transforms.Impulse;
 import org.apache.beam.sdk.transforms.PTransform;
 import org.apache.beam.sdk.transforms.Sample;
 import org.apache.beam.sdk.values.PBegin;
@@ -60,7 +61,7 @@ public class TransformTreeTest {
   @Rule public TemporaryFolder tmpFolder = new TemporaryFolder();
 
   enum TransformsSeen {
-    READ,
+    IMPULSE,
     WRITE,
     SAMPLE
   }
@@ -139,7 +140,7 @@ public class TransformTreeTest {
               assertNotNull(node.getEnclosingNode());
               assertTrue(node.isCompositeNode());
             }
-            assertThat(transform, not(instanceOf(Read.Bounded.class)));
+            assertThat(transform, not(instanceOf(Impulse.class)));
             return CompositeBehavior.ENTER_TRANSFORM;
           }
 
@@ -157,9 +158,11 @@ public class TransformTreeTest {
             // Pick is a composite, should not be visited here.
             assertThat(transform, not(instanceOf(Combine.Globally.class)));
             assertThat(transform, not(instanceOf(WriteFiles.class)));
-            if (transform instanceof Read.Bounded
-                && node.getEnclosingNode().getTransform() instanceof TextIO.Read) {
-              assertTrue(visited.add(TransformsSeen.READ));
+            if (transform instanceof Impulse
+                && node.getEnclosingNode().getTransform() instanceof Read.Bounded
+                && node.getEnclosingNode().getEnclosingNode().getTransform()
+                    instanceof TextIO.Read) {
+              assertTrue(visited.add(TransformsSeen.IMPULSE));
             }
           }
         });

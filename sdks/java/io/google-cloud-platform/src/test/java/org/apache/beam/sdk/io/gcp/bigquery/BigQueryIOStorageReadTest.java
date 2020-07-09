@@ -301,7 +301,7 @@ public class BigQueryIOStorageReadTest {
             .withCoder(TableRowJsonCoder.of())
             .withMethod(Method.DIRECT_READ)
             .from("foo.com:project:dataset.table");
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(typedRead);
+    Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(typedRead);
     assertThat(displayData, hasItem(hasDisplayItem("table")));
   }
 

@@ -253,6 +253,10 @@ public class SplittableParDoViaKeyedWorkItems {
      */
     private StateTag<ValueState<RestrictionT>> restrictionTag;
 
+    /**
+     * The state cell containing the watermark estimator state for the unprocessed part of work for
+     * this element.
+     */
     private StateTag<ValueState<WatermarkEstimatorStateT>> watermarkEstimatorStateTag;
 
     private final DoFn<InputT, OutputT> fn;
@@ -524,7 +528,6 @@ public class SplittableParDoViaKeyedWorkItems {
               processElementInvoker.invokeProcessElement(
                   invoker, elementAndRestriction.getKey(), tracker, watermarkEstimator);
 
-      // Save state for resuming.
       if (result.getResidualRestriction() == null) {
         // All work for this element/restriction is completed. Clear state and release hold.
         elementState.clear();

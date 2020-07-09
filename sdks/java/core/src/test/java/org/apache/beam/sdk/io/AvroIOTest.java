@@ -1509,7 +1509,7 @@ public class AvroIOTest implements Serializable {
               .withBeamSchemas(withBeamSchemas)
               .from("/foo.*");
 
-      Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(read);
+      Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(read);
       assertThat(
           "AvroIO.Read should include the file pattern in its primitive transform",
           displayData,

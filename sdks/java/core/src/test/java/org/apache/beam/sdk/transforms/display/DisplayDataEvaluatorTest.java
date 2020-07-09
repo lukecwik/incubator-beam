@@ -98,7 +98,7 @@ public class DisplayDataEvaluatorTest implements Serializable {
     PTransform<? super PBegin, ? extends POutput> myTransform = TextIO.read().from("foo.*");
 
     DisplayDataEvaluator evaluator = DisplayDataEvaluator.create();
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(myTransform);
+    Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(myTransform);
 
     assertThat(displayData, hasItem(hasDisplayItem("filePattern", "foo.*")));
   }

@@ -236,7 +236,7 @@ public class PubsubIOTest {
     // Reading from a subscription.
     PubsubIO.Read<String> read =
         baseRead.fromSubscription("projects/project/subscriptions/subscription");
-    displayData = evaluator.displayDataForPrimitiveSourceTransforms(read);
+    displayData = evaluator.displayDataForPrimitivesAndReadTransforms(read);
     assertThat(
         "PubsubIO.Read should include the subscription in its primitive display data",
         displayData,
@@ -244,7 +244,7 @@ public class PubsubIOTest {
 
     // Reading from a topic.
     read = baseRead.fromTopic("projects/project/topics/topic");
-    displayData = evaluator.displayDataForPrimitiveSourceTransforms(read);
+    displayData = evaluator.displayDataForPrimitivesAndReadTransforms(read);
     assertThat(
         "PubsubIO.Read should include the topic in its primitive display data",
         displayData,

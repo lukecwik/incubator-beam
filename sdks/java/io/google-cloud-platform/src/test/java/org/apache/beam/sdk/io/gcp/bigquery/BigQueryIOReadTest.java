@@ -527,7 +527,7 @@ public class BigQueryIOReadTest implements Serializable {
                     .withJobService(new FakeJobService()))
             .withoutValidation();
 
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(read);
+    Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(read);
     assertThat(
         "BigQueryIO.Read should include the table spec in its primitive display data",
         displayData,
@@ -546,7 +546,7 @@ public class BigQueryIOReadTest implements Serializable {
                     .withJobService(new FakeJobService()))
             .withoutValidation();
 
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(read);
+    Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(read);
     assertThat(
         "BigQueryIO.Read should include the query in its primitive display data",
         displayData,

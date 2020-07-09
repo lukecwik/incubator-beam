@@ -92,12 +92,14 @@ import org.joda.time.Duration;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
+import org.junit.experimental.runners.Enclosed;
 import org.junit.rules.TemporaryFolder;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.junit.runners.Parameterized;
 
 /** Tests for {@link TextIO.Read}. */
+@RunWith(Enclosed.class)
 public class TextIOReadTest {
   private static final int LINES_NUMBER_FOR_LARGE = 1000;
   private static final List<String> EMPTY = Collections.emptyList();
@@ -476,16 +478,6 @@ public class TextIOReadTest {
     }
 
     @Test
-    public void testReadNamed() throws Exception {
-      File emptyFile = tempFolder.newFile();
-      p.enableAbandonedNodeEnforcement(false);
-
-      assertEquals("TextIO.Read/Read.out", p.apply(TextIO.read().from("somefile")).getName());
-      assertEquals(
-          "MyRead/Read.out", p.apply("MyRead", TextIO.read().from(emptyFile.getPath())).getName());
-    }
-
-    @Test
     public void testReadDisplayData() {
       TextIO.Read read = TextIO.read().from("foo.*").withCompression(BZIP2);
 
@@ -506,7 +498,7 @@ public class TextIOReadTest {
 
       TextIO.Read read = TextIO.read().from("foobar");
 
-      Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(read);
+      Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(read);
       assertThat(
           "TextIO.Read should include the file prefix in its primitive display data",
           displayData,

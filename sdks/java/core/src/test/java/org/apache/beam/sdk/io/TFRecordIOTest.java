@@ -55,9 +55,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import org.apache.beam.sdk.coders.StringUtf8Coder;
-import org.apache.beam.sdk.io.FileIO.ReadableFile;
 import org.apache.beam.sdk.io.TFRecordIO.TFRecordCodec;
-import org.apache.beam.sdk.io.fs.MatchResult.Metadata;
 import org.apache.beam.sdk.testing.NeedsRunner;
 import org.apache.beam.sdk.testing.PAssert;
 import org.apache.beam.sdk.testing.TestPipeline;
@@ -116,40 +114,6 @@ public class TFRecordIOTest {
   @Rule public TestPipeline writePipeline = TestPipeline.create();
 
   @Rule public ExpectedException expectedException = ExpectedException.none();
-
-  @Test
-  public void testReadNamed() {
-    readPipeline.enableAbandonedNodeEnforcement(false);
-
-    assertEquals(
-        "TFRecordIO.Read/Read.out",
-        readPipeline.apply(TFRecordIO.read().from("foo.*").withoutValidation()).getName());
-    assertEquals(
-        "MyRead/Read.out",
-        readPipeline
-            .apply("MyRead", TFRecordIO.read().from("foo.*").withoutValidation())
-            .getName());
-  }
-
-  @Test
-  public void testReadFilesNamed() {
-    readPipeline.enableAbandonedNodeEnforcement(false);
-
-    Metadata metadata =
-        Metadata.builder()
-            .setResourceId(FileSystems.matchNewResource("file", false /* isDirectory */))
-            .setIsReadSeekEfficient(true)
-            .setSizeBytes(1024)
-            .build();
-    Create.Values<ReadableFile> create = Create.of(new ReadableFile(metadata, Compression.AUTO));
-
-    assertEquals(
-        "TFRecordIO.ReadFiles/Read all via FileBasedSource/Read ranges/ParMultiDo(ReadFileRanges).output",
-        readPipeline.apply(create).apply(TFRecordIO.readFiles()).getName());
-    assertEquals(
-        "MyRead/Read all via FileBasedSource/Read ranges/ParMultiDo(ReadFileRanges).output",
-        readPipeline.apply(create).apply("MyRead", TFRecordIO.readFiles()).getName());
-  }
 
   @Test
   public void testReadDisplayData() {

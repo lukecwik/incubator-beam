@@ -252,7 +252,7 @@ public class DatastoreV1Test {
             .withNumQuerySplits(numSplits);
 
     String assertMessage = "DatastoreIO read should include the '%s' in its primitive display data";
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(read);
+    Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(read);
     assertThat(
         String.format(assertMessage, "project id"),
         displayData,

@@ -110,7 +110,6 @@ import org.apache.beam.sdk.io.gcp.pubsub.PubsubMessageWithAttributesAndMessageId
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubMessageWithAttributesCoder;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubUnboundedSink;
 import org.apache.beam.sdk.io.gcp.pubsub.PubsubUnboundedSource;
-import org.apache.beam.sdk.options.ExperimentalOptions;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsValidator;
 import org.apache.beam.sdk.options.ValueProvider.NestedValueProvider;
@@ -139,6 +138,7 @@ import org.apache.beam.sdk.transforms.View;
 import org.apache.beam.sdk.transforms.View.CreatePCollectionView;
 import org.apache.beam.sdk.transforms.WithKeys;
 import org.apache.beam.sdk.transforms.display.DisplayData;
+import org.apache.beam.sdk.transforms.display.HasDisplayData;
 import org.apache.beam.sdk.transforms.reflect.DoFnSignatures;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.transforms.windowing.GlobalWindow;
@@ -467,8 +467,7 @@ public class DataflowRunner extends PipelineRunner<DataflowPipelineJob> {
           PTransformOverride.of(
               PTransformMatchers.writeWithRunnerDeterminedSharding(),
               new StreamingShardedWriteFactory(options)));
-      if (!fnApiEnabled
-          || ExperimentalOptions.hasExperiment(options, "beam_fn_api_use_deprecated_read")) {
+      if (!fnApiEnabled) {
         overridesBuilder
             .add(
                 // Streaming Bounded Read is implemented in terms of Streaming Unbounded Read, and
@@ -480,9 +479,7 @@ public class DataflowRunner extends PipelineRunner<DataflowPipelineJob> {
                 PTransformOverride.of(
                     PTransformMatchers.classEqualTo(Read.Unbounded.class),
                     new StreamingUnboundedReadOverrideFactory()));
-      }
 
-      if (!fnApiEnabled) {
         overridesBuilder.add(
             PTransformOverride.of(
                 PTransformMatchers.classEqualTo(View.CreatePCollectionView.class),
@@ -517,6 +514,13 @@ public class DataflowRunner extends PipelineRunner<DataflowPipelineJob> {
               PTransformMatchers.splittableProcessKeyedBounded(),
               new SplittableParDoNaiveBounded.OverrideFactory()));
       if (!fnApiEnabled) {
+        overridesBuilder.add(
+            // Batch Bounded Read is implemented in terms of BoundedSource APIs directly and not
+            // the splittable DoFn implementation
+            PTransformOverride.of(
+                PTransformMatchers.classEqualTo(Read.Bounded.class),
+                new BatchBoundedReadOverrideFactory()));
+
         overridesBuilder
             .add(
                 PTransformOverride.of(
@@ -1755,6 +1759,56 @@ public class DataflowRunner extends PipelineRunner<DataflowPipelineJob> {
                       c.output(c.element().getValue().getValue());
                     }
                   }));
+    }
+  }
+
+  private static class BatchBoundedReadOverrideFactory<T>
+      implements PTransformOverrideFactory<PBegin, PCollection<T>, Read.Bounded<T>> {
+    @Override
+    public PTransformReplacement<PBegin, PCollection<T>> getReplacementTransform(
+        AppliedPTransform<PBegin, PCollection<T>, Read.Bounded<T>> transform) {
+      return PTransformReplacement.of(
+          transform.getPipeline().begin(), new BatchBoundedRead<>(transform.getTransform()));
+    }
+
+    @Override
+    public Map<PValue, ReplacementOutput> mapOutputs(
+        Map<TupleTag<?>, PValue> outputs, PCollection<T> newOutput) {
+      return ReplacementOutputs.singleton(outputs, newOutput);
+    }
+  }
+
+  /**
+   * Specialized implementation for {@link org.apache.beam.sdk.io.Read.Bounded Read.Bounded} for the
+   * non-portable Dataflow runner in batch mode to use the BoundedSource APIs for execution.
+   */
+  static class BatchBoundedRead<T> extends PTransform<PBegin, PCollection<T>>
+      implements HasDisplayData {
+    private final Read.Bounded<T> transform;
+
+    public BatchBoundedRead(Read.Bounded<T> transform) {
+      this.transform = transform;
+    }
+
+    @Override
+    public final PCollection<T> expand(PBegin input) {
+      transform.getSource().validate();
+
+      return PCollection.createPrimitiveOutputInternal(
+          input.getPipeline(),
+          WindowingStrategy.globalDefault(),
+          IsBounded.BOUNDED,
+          transform.getSource().getOutputCoder());
+    }
+
+    /** Returns the {@code BoundedSource} used to create this{@code PTransform}. */
+    public BoundedSource<T> getSource() {
+      return transform.getSource();
+    }
+
+    @Override
+    public void populateDisplayData(DisplayData.Builder builder) {
+      builder.delegate(transform);
     }
   }
 

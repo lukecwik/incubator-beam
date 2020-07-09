@@ -17,12 +17,14 @@
  */
 package org.apache.beam.sdk.transforms.display;
 
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 import org.apache.beam.sdk.Pipeline;
 import org.apache.beam.sdk.PipelineRunner;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.coders.VoidCoder;
+import org.apache.beam.sdk.io.Read;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.runners.TransformHierarchy;
 import org.apache.beam.sdk.testing.TestPipeline;
@@ -101,23 +103,31 @@ public class DisplayDataEvaluator {
 
   /**
    * Traverse the specified source {@link PTransform}, collecting {@link DisplayData} registered on
-   * the inner primitive {@link PTransform PTransforms}.
+   * the inner primitive {@link PTransform PTransforms} and any {@link Read.Bounded} and {@link
+   * Read.Unbounded} transforms.
    *
    * @param root The source root {@link PTransform} to traverse
-   * @return the set of {@link DisplayData} for primitive source {@link PTransform PTransforms}.
+   * @return the set of {@link DisplayData} for primitive {@link PTransform PTransforms} and any
+   *     {@link Read.Bounded} and {@link Read.Unbounded} transforms.
    */
-  public Set<DisplayData> displayDataForPrimitiveSourceTransforms(
+  public Set<DisplayData> displayDataForPrimitivesAndReadTransforms(
       final PTransform<? super PBegin, ? extends POutput> root) {
     Pipeline pipeline = Pipeline.create(options);
     pipeline.apply("SourceTransform", root);
 
-    return displayDataForPipeline(pipeline, root);
+    ReadDisplayDataPTransformVisitor visitor = new ReadDisplayDataPTransformVisitor(root);
+    pipeline.traverseTopologically(visitor);
+
+    Set<DisplayData> rval = new HashSet<>();
+    rval.addAll(displayDataForPipeline(pipeline, root));
+    rval.addAll(visitor.getDisplayData());
+    return rval;
   }
 
   private static Set<DisplayData> displayDataForPipeline(Pipeline pipeline, PTransform<?, ?> root) {
     PrimitiveDisplayDataPTransformVisitor visitor = new PrimitiveDisplayDataPTransformVisitor(root);
     pipeline.traverseTopologically(visitor);
-    return visitor.getPrimitivesDisplayData();
+    return visitor.getDisplayData();
   }
 
   /**
@@ -135,7 +145,7 @@ public class DisplayDataEvaluator {
       this.displayData = Sets.newHashSet();
     }
 
-    Set<DisplayData> getPrimitivesDisplayData() {
+    Set<DisplayData> getDisplayData() {
       return displayData;
     }
 
@@ -159,6 +169,43 @@ public class DisplayDataEvaluator {
     public void visitPrimitiveTransform(TransformHierarchy.Node node) {
       if (inCompositeRoot || Objects.equals(root, node.getTransform())) {
         displayData.add(DisplayData.from(node.getTransform()));
+      }
+    }
+  }
+
+  private static class ReadDisplayDataPTransformVisitor extends Pipeline.PipelineVisitor.Defaults {
+    private final PTransform<?, ?> root;
+    private final Set<DisplayData> displayData;
+    private boolean inCompositeRoot = false;
+
+    ReadDisplayDataPTransformVisitor(PTransform<?, ?> root) {
+      this.root = root;
+      this.displayData = Sets.newHashSet();
+    }
+
+    Set<DisplayData> getDisplayData() {
+      return displayData;
+    }
+
+    @Override
+    public CompositeBehavior enterCompositeTransform(TransformHierarchy.Node node) {
+      if (Objects.equals(root, node.getTransform())) {
+        inCompositeRoot = true;
+      }
+
+      if (inCompositeRoot
+          && (node.getTransform() instanceof Read.Bounded
+              || node.getTransform() instanceof Read.Unbounded)) {
+        displayData.add(DisplayData.from(node.getTransform()));
+      }
+
+      return CompositeBehavior.ENTER_TRANSFORM;
+    }
+
+    @Override
+    public void leaveCompositeTransform(TransformHierarchy.Node node) {
+      if (Objects.equals(root, node.getTransform())) {
+        inCompositeRoot = false;
       }
     }
   }

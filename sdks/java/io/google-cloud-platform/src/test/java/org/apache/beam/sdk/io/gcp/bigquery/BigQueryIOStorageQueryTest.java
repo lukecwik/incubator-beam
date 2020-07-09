@@ -277,7 +277,7 @@ public class BigQueryIOStorageQueryTest {
   public void testEvaluatedDisplayData() throws Exception {
     DisplayDataEvaluator evaluator = DisplayDataEvaluator.create();
     TypedRead<TableRow> typedRead = getDefaultTypedRead();
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(typedRead);
+    Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(typedRead);
     assertThat(displayData, hasItem(hasDisplayItem("query")));
   }
 

@@ -1136,7 +1136,7 @@ public class BigtableIOTest {
             .withRowFilter(rowFilter)
             .withBigtableService(service);
 
-    Set<DisplayData> displayData = evaluator.displayDataForPrimitiveSourceTransforms(read);
+    Set<DisplayData> displayData = evaluator.displayDataForPrimitivesAndReadTransforms(read);
     assertThat(
         "BigtableIO.Read should include the table id in its primitive display data",
         displayData,
