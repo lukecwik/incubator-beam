@@ -44,6 +44,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.coders.SerializableCoder;
 import org.apache.beam.sdk.io.BoundedSource;
 import org.apache.beam.sdk.io.hadoop.WritableCoder;
 import org.apache.beam.sdk.io.hcatalog.HCatalogIO.BoundedHCatalogSource;
@@ -57,6 +58,7 @@ import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.ParDo;
 import org.apache.beam.sdk.transforms.Watch;
+import org.apache.beam.sdk.util.CoderUtils;
 import org.apache.beam.sdk.util.UserCodeException;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableList;
@@ -306,6 +308,9 @@ public class HCatalogIOTest implements Serializable {
     List<String> records = new ArrayList<>();
     for (int i = 0; i < context.numSplits(); i++) {
       BoundedHCatalogSource source = new BoundedHCatalogSource(spec.withSplitId(i));
+      CoderUtils.clone(
+          SerializableCoder.of(BoundedHCatalogSource.class),
+          CoderUtils.clone(SerializableCoder.of(BoundedHCatalogSource.class), source));
       for (HCatRecord record : SourceTestUtils.readFromSource(source, OPTIONS)) {
         records.add(record.get(0).toString());
       }
