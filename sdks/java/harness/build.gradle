@@ -75,5 +75,11 @@ dependencies {
   testCompile project(path: ":sdks:java:fn-execution", configuration: "testRuntime")
   shadowTestRuntimeClasspath library.java.slf4j_jdk14
   jmhCompile project(path: ":sdks:java:harness", configuration: "shadowTest")
+  jmhCompile project(":runners:java-fn-execution")
   jmhRuntime library.java.slf4j_jdk14
+}
+
+jmh {
+  args 'ProcessBundleBenchmark'
+  jvmArgs '-agentpath:/opt/cprof/profiler_java_agent.so=-cprof_service=process_bundle_benchmark,-cprof_project_id=google.com:clouddfe,-cprof_zone_name=us-central1-a'
 }
