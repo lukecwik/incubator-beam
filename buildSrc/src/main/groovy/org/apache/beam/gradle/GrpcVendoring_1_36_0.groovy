@@ -43,12 +43,15 @@ class GrpcVendoring_1_36_0 {
       "com.google.protobuf:protobuf-java:$protobuf_version",
       "com.google.protobuf:protobuf-java-util:$protobuf_version",
       "com.google.code.gson:gson:$gson_version",
+      "com.squareup.okhttp:okhttp:2.7.4",
+      "com.squareup.okio:okio:1.17.5",
       "io.grpc:grpc-auth:$grpc_version",
       "io.grpc:grpc-core:$grpc_version",
       "io.grpc:grpc-context:$grpc_version",
       "io.grpc:grpc-netty:$grpc_version",
       "io.grpc:grpc-protobuf:$grpc_version",
       "io.grpc:grpc-stub:$grpc_version",
+      "io.grpc:grpc-okhttp:$grpc_version",
       // Use a classifier to ensure we get the jar containing native libraries. In the future
       // hopefully netty releases a single jar containing native libraries for all architectures.
       "io.netty:netty-transport-native-epoll:$netty_version:linux-x86_64",
@@ -114,10 +117,12 @@ class GrpcVendoring_1_36_0 {
       "com.google.rpc",
       "com.google.type",
       "com.google.geo.type",
+      "com.squareup.okhttp",
       "io.grpc",
       "io.netty",
       "io.opencensus",
       "io.perfmark",
+      "okio",
     ]
 
     return packagesToRelocate.collectEntries {

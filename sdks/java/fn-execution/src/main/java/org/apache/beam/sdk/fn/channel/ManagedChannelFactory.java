@@ -24,6 +24,7 @@ import org.apache.beam.vendor.grpc.v1p36p0.io.grpc.ClientInterceptor;
 import org.apache.beam.vendor.grpc.v1p36p0.io.grpc.ManagedChannel;
 import org.apache.beam.vendor.grpc.v1p36p0.io.grpc.ManagedChannelBuilder;
 import org.apache.beam.vendor.grpc.v1p36p0.io.grpc.netty.NettyChannelBuilder;
+import org.apache.beam.vendor.grpc.v1p36p0.io.grpc.okhttp.OkHttpChannelBuilder;
 import org.apache.beam.vendor.grpc.v1p36p0.io.netty.channel.epoll.EpollDomainSocketChannel;
 import org.apache.beam.vendor.grpc.v1p36p0.io.netty.channel.epoll.EpollEventLoopGroup;
 import org.apache.beam.vendor.grpc.v1p36p0.io.netty.channel.epoll.EpollSocketChannel;
@@ -33,6 +34,10 @@ import org.apache.beam.vendor.grpc.v1p36p0.io.netty.channel.unix.DomainSocketAdd
 public abstract class ManagedChannelFactory {
   public static ManagedChannelFactory createDefault() {
     return new Default();
+  }
+
+  public static ManagedChannelFactory createOkHttp() {
+    return new OkHttp();
   }
 
   public static ManagedChannelFactory createEpoll() {
@@ -84,7 +89,18 @@ public abstract class ManagedChannelFactory {
   private static class Default extends ManagedChannelFactory {
     @Override
     public ManagedChannelBuilder<?> builderFor(ApiServiceDescriptor apiServiceDescriptor) {
-      return ManagedChannelBuilder.forTarget(apiServiceDescriptor.getUrl())
+      return NettyChannelBuilder.forTarget(apiServiceDescriptor.getUrl())
+          .usePlaintext()
+          // Set the message size to max value here. The actual size is governed by the
+          // buffer size in the layers above.
+          .maxInboundMessageSize(Integer.MAX_VALUE);
+    }
+  }
+
+  private static class OkHttp extends ManagedChannelFactory {
+    @Override
+    public ManagedChannelBuilder<?> builderFor(ApiServiceDescriptor apiServiceDescriptor) {
+      return OkHttpChannelBuilder.forTarget(apiServiceDescriptor.getUrl())
           .usePlaintext()
           // Set the message size to max value here. The actual size is governed by the
           // buffer size in the layers above.

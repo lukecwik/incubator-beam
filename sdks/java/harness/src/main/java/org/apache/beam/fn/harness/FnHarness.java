@@ -176,7 +176,7 @@ public class FnHarness {
     if (experiments != null && experiments.contains("beam_fn_api_epoll")) {
       channelFactory = ManagedChannelFactory.createEpoll();
     } else {
-      channelFactory = ManagedChannelFactory.createDefault();
+      channelFactory = ManagedChannelFactory.createOkHttp();
     }
     OutboundObserverFactory outboundObserverFactory =
         HarnessStreamObserverFactories.fromOptions(options);
