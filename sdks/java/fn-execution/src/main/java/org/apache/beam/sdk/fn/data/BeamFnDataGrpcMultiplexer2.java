@@ -17,6 +17,7 @@
  */
 package org.apache.beam.sdk.fn.data;
 
+import com.google.errorprone.annotations.concurrent.GuardedBy;
 import java.util.HashSet;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,6 +31,7 @@ import org.apache.beam.vendor.grpc.v1p36p0.io.grpc.Status;
 import org.apache.beam.vendor.grpc.v1p36p0.io.grpc.stub.StreamObserver;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.annotations.VisibleForTesting;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.MoreObjects;
+import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.Throwables;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableList;
 import org.checkerframework.checker.nullness.qual.Nullable;
 import org.slf4j.Logger;
@@ -51,10 +53,11 @@ public class BeamFnDataGrpcMultiplexer2 implements AutoCloseable {
   private static final Logger LOG = LoggerFactory.getLogger(BeamFnDataGrpcMultiplexer2.class);
   private final Endpoints.@Nullable ApiServiceDescriptor apiServiceDescriptor;
   private final StreamObserver<BeamFnApi.Elements> inboundObserver;
-  private final StreamObserver<BeamFnApi.Elements> outboundObserver;
   private final ConcurrentMap<
           /*instructionId=*/ String, CompletableFuture<CloseableFnDataReceiver<BeamFnApi.Elements>>>
       receivers;
+          private final Object outboundObserverSafePublishingLock;
+  private final StreamObserver<BeamFnApi.Elements> outboundObserver;
   private final ConcurrentMap<String, Boolean> erroredInstructionIds;
 
   public BeamFnDataGrpcMultiplexer2(
@@ -66,8 +69,11 @@ public class BeamFnDataGrpcMultiplexer2 implements AutoCloseable {
     this.receivers = new ConcurrentHashMap<>();
     this.erroredInstructionIds = new ConcurrentHashMap<>();
     this.inboundObserver = new InboundObserver();
-    this.outboundObserver =
-        outboundObserverFactory.outboundObserverFor(baseOutboundObserverFactory, inboundObserver);
+    this.outboundObserverSafePublishingLock = new Object();
+    synchronized (outboundObserverSafePublishingLock) {
+      this.outboundObserver = outboundObserverFactory.outboundObserverFor(
+          baseOutboundObserverFactory, inboundObserver);
+    }
   }
 
   @Override
@@ -233,11 +239,11 @@ public class BeamFnDataGrpcMultiplexer2 implements AutoCloseable {
       } catch (ExecutionException | InterruptedException e) {
         LOG.error(
             "Client interrupted during handling of data for instruction {}", instructionId, e);
-        outboundObserver.onError(e);
+        getOutboundObserverThreadSafe().onError(e);
         return;
       } catch (RuntimeException e) {
         LOG.error("Client failed to handle data for instruction {}", instructionId, e);
-        outboundObserver.onError(e);
+        getOutboundObserverThreadSafe().onError(e);
         return;
       }
       try {
@@ -253,7 +259,7 @@ public class BeamFnDataGrpcMultiplexer2 implements AutoCloseable {
           "Failed to handle for {}",
           apiServiceDescriptor == null ? "unknown endpoint" : apiServiceDescriptor,
           t);
-      outboundObserver.onCompleted();
+      getOutboundObserverThreadSafe().onCompleted();
     }
 
     @Override
@@ -261,7 +267,17 @@ public class BeamFnDataGrpcMultiplexer2 implements AutoCloseable {
       LOG.warn(
           "Hanged up for {}.",
           apiServiceDescriptor == null ? "unknown endpoint" : apiServiceDescriptor);
-      outboundObserver.onCompleted();
+      getOutboundObserverThreadSafe().onCompleted();
+    }
+
+    /**
+     * We ensure that the thread that created this instance is able to finish constructing
+     * the enclosing class while the gRPC read thread starts invoking us.
+     */
+    private StreamObserver<BeamFnApi.Elements> getOutboundObserverThreadSafe() {
+      synchronized (outboundObserverSafePublishingLock) {
+        return outboundObserver;
+      }
     }
   }
 }

@@ -76,6 +76,10 @@ public abstract class OutboundObserverFactory {
    * Creates an outbound observer for the given inbound observer by potentially inserting hooks into
    * the inbound and outbound observers.
    *
+   * <p>Note that inbound {@link StreamObserver}s may see inbound messages, errors, and completion
+   * before this method returns. The objects that the inbound {@link StreamObserver} accesses must
+   * be guarded appropriately.
+   *
    * @param baseOutboundObserverFactory A base function to create an outbound observer from an
    *     inbound observer.
    * @param inboundObserver The inbound observer.

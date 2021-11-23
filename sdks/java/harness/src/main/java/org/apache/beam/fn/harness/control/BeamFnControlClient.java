@@ -51,6 +51,7 @@ import org.slf4j.LoggerFactory;
 public class BeamFnControlClient {
   private static final Logger LOG = LoggerFactory.getLogger(BeamFnControlClient.class);
 
+  private final Object outboundObserverSafePublisingLock;
   private final StreamObserver<BeamFnApi.InstructionResponse> outboundObserver;
   private final EnumMap<
           BeamFnApi.InstructionRequest.RequestCase,
@@ -84,9 +85,12 @@ public class BeamFnControlClient {
           handlers) {
     this.onFinish = new CompletableFuture<>();
     this.handlers = handlers;
-    this.outboundObserver =
-        outboundObserverFactory.outboundObserverFor(
-            controlStub::control, new InboundObserver(executor));
+    this.outboundObserverSafePublisingLock = new Object();
+    synchronized (outboundObserverSafePublisingLock) {
+      this.outboundObserver =
+          outboundObserverFactory.outboundObserverFor(
+              controlStub::control, new InboundObserver(executor));
+    }
   }
 
   private static final Object COMPLETED = new Object();
@@ -173,7 +177,9 @@ public class BeamFnControlClient {
 
   public void sendInstructionResponse(BeamFnApi.InstructionResponse value) {
     LOG.debug("Sending InstructionResponse {}", value);
-    outboundObserver.onNext(value);
+    synchronized (outboundObserverSafePublisingLock) {
+      outboundObserver.onNext(value);
+    }
   }
 
   private void sendErrorResponse(Error e) {

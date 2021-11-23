@@ -58,6 +58,7 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
   private final Endpoints.@Nullable ApiServiceDescriptor apiServiceDescriptor;
   private final StreamObserver<BeamFnApi.Elements> inboundObserver;
   private final StreamObserver<BeamFnApi.Elements> outboundObserver;
+  private final Object outboundObserverSafePublishingLock;
   private final ConcurrentMap<LogicalEndpoint, CompletableFuture<BiConsumer<ByteString, Boolean>>>
       consumers;
 
@@ -68,8 +69,11 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
     this.apiServiceDescriptor = apiServiceDescriptor;
     this.consumers = new ConcurrentHashMap<>();
     this.inboundObserver = new InboundObserver();
-    this.outboundObserver =
-        outboundObserverFactory.outboundObserverFor(baseOutboundObserverFactory, inboundObserver);
+    this.outboundObserverSafePublishingLock = new Object();
+    synchronized (outboundObserverSafePublishingLock) {
+      this.outboundObserver =
+          outboundObserverFactory.outboundObserverFor(baseOutboundObserverFactory, inboundObserver);
+    }
   }
 
   @Override
@@ -155,14 +159,14 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
               data.getInstructionId(),
               data.getTransformId(),
               e);
-          outboundObserver.onError(e);
+          getOutboundObserverThreadSafe().onError(e);
         } catch (RuntimeException e) {
           LOG.error(
               "Client failed to handle data for instruction {} and transform {}",
               data.getInstructionId(),
               data.getTransformId(),
               e);
-          outboundObserver.onError(e);
+          getOutboundObserverThreadSafe().onError(e);
         }
       }
 
@@ -193,7 +197,7 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
               timer.getTransformId(),
               timer.getTimerFamilyId(),
               e);
-          outboundObserver.onError(e);
+          getOutboundObserverThreadSafe().onError(e);
         } catch (RuntimeException e) {
           LOG.error(
               "Client failed to handle timer for instruction {}, transform {}, and timer family {}",
@@ -201,7 +205,7 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
               timer.getTransformId(),
               timer.getTimerFamilyId(),
               e);
-          outboundObserver.onError(e);
+          getOutboundObserverThreadSafe().onError(e);
         }
       }
     }
@@ -219,6 +223,16 @@ public class BeamFnDataGrpcMultiplexer implements AutoCloseable {
       LOG.warn(
           "Hanged up for {}.",
           apiServiceDescriptor == null ? "unknown endpoint" : apiServiceDescriptor);
+    }
+
+    /**
+     * We ensure that the thread that created this instance is able to finish constructing
+     * the enclosing class while the gRPC read thread starts invoking us.
+     */
+    private StreamObserver<BeamFnApi.Elements> getOutboundObserverThreadSafe() {
+      synchronized (outboundObserverSafePublishingLock) {
+        return outboundObserver;
+      }
     }
   }
 }
