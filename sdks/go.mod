@@ -26,7 +26,7 @@ require (
 	cloud.google.com/go/bigquery v1.37.0
 	cloud.google.com/go/datastore v1.8.0
 	cloud.google.com/go/pubsub v1.24.0
-	cloud.google.com/go/storage v1.25.0
+	cloud.google.com/go/storage v1.26.0
 	github.com/docker/go-connections v0.4.0
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/golang/protobuf v1.5.2 // TODO(danoliveira): Fully replace this with google.golang.org/protobuf
@@ -41,11 +41,11 @@ require (
 	github.com/xitongsys/parquet-go v1.6.2
 	github.com/xitongsys/parquet-go-source v0.0.0-20220315005136-aec0fe3e777c
 	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e
-	golang.org/x/oauth2 v0.0.0-20220622183110-fd043fe589d2
+	golang.org/x/oauth2 v0.0.0-20220822191816-0ebed06d0094
 	golang.org/x/sys v0.0.0-20220624220833-87e55d714810
 	golang.org/x/text v0.3.7
-	google.golang.org/api v0.92.0
-	google.golang.org/genproto v0.0.0-20220802133213-ce4fa296bf78
+	google.golang.org/api v0.94.0
+	google.golang.org/genproto v0.0.0-20220810155839-1856144b1d9c
 	google.golang.org/grpc v1.48.0
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/retry.v1 v1.0.3
