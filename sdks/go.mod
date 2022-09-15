@@ -23,7 +23,7 @@ module github.com/apache/beam/sdks/v2
 go 1.18
 
 require (
-	cloud.google.com/go/bigquery v1.37.0
+	cloud.google.com/go/bigquery v1.41.0
 	cloud.google.com/go/datastore v1.8.0
 	cloud.google.com/go/pubsub v1.24.0
 	cloud.google.com/go/storage v1.25.0
@@ -41,11 +41,11 @@ require (
 	github.com/xitongsys/parquet-go v1.6.2
 	github.com/xitongsys/parquet-go-source v0.0.0-20220315005136-aec0fe3e777c
 	golang.org/x/net v0.0.0-20220624214902-1bab6f366d9e
-	golang.org/x/oauth2 v0.0.0-20220622183110-fd043fe589d2
+	golang.org/x/oauth2 v0.0.0-20220909003341-f21342109be1
 	golang.org/x/sys v0.0.0-20220624220833-87e55d714810
 	golang.org/x/text v0.3.7
-	google.golang.org/api v0.92.0
-	google.golang.org/genproto v0.0.0-20220802133213-ce4fa296bf78
+	google.golang.org/api v0.95.0
+	google.golang.org/genproto v0.0.0-20220913154956-18f8339a66a5
 	google.golang.org/grpc v1.48.0
 	google.golang.org/protobuf v1.28.1
 	gopkg.in/retry.v1 v1.0.3
@@ -71,7 +71,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.1.0 // indirect
-	github.com/googleapis/gax-go/v2 v2.4.0 // indirect
+	github.com/googleapis/gax-go/v2 v2.5.1 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/klauspost/compress v1.13.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
