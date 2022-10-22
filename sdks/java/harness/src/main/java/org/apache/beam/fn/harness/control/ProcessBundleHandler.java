@@ -82,6 +82,7 @@ import org.apache.beam.sdk.fn.data.BeamFnDataOutboundAggregator;
 import org.apache.beam.sdk.fn.data.DataEndpoint;
 import org.apache.beam.sdk.fn.data.FnDataReceiver;
 import org.apache.beam.sdk.fn.data.TimerEndpoint;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.function.ThrowingRunnable;
 import org.apache.beam.sdk.metrics.MetricsContainer;
 import org.apache.beam.sdk.metrics.MetricsEnvironment;
@@ -373,7 +374,7 @@ public class ProcessBundleHandler {
 
                     @Override
                     public <T> void addPCollectionConsumer(
-                        String pCollectionId, FnDataReceiver<WindowedValue<T>> consumer) {
+                        String pCollectionId, WindowedFnDataReceiver<T> consumer) {
                       pCollectionConsumerRegistry.register(
                           pCollectionId, pTransformId, pTransform.getUniqueName(), consumer);
                     }
@@ -423,7 +424,7 @@ public class ProcessBundleHandler {
                     }
 
                     @Override
-                    public FnDataReceiver<?> getPCollectionConsumer(String pCollectionId) {
+                    public WindowedFnDataReceiver<?> getPCollectionConsumer(String pCollectionId) {
                       return pCollectionConsumerRegistry.getMultiplexingConsumer(pCollectionId);
                     }
 

@@ -21,9 +21,9 @@ import static org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.I
 
 import com.google.auto.service.AutoService;
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Map;
 import java.util.function.Supplier;
-import org.apache.beam.fn.harness.PTransformRunnerFactory.Context;
 import org.apache.beam.fn.harness.state.BeamFnStateClient;
 import org.apache.beam.fn.harness.state.StateBackedIterable.StateBackedIterableTranslationContext;
 import org.apache.beam.model.fnexecution.v1.BeamFnApi;
@@ -32,9 +32,14 @@ import org.apache.beam.model.pipeline.v1.RunnerApi.Components;
 import org.apache.beam.runners.core.construction.CoderTranslation;
 import org.apache.beam.runners.core.construction.RehydratedComponents;
 import org.apache.beam.sdk.coders.Coder;
+import org.apache.beam.sdk.fn.data.FnDataReceiver;
 import org.apache.beam.sdk.fn.data.RemoteGrpcPortWrite;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
+import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
+import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableMap;
+import org.joda.time.Instant;
 
 /**
  * Registers as a consumer with the Beam Fn Data Api. Consumes elements and encodes them for
@@ -89,9 +94,23 @@ public class BeamFnDataWriteRunner<InputT> {
                       return context.getProcessBundleInstructionIdSupplier();
                     }
                   });
+      FnDataReceiver<WindowedValue<InputT>> dataEndpointReceiver = context.addOutgoingDataEndpoint(port.getApiServiceDescriptor(), coder);
       context.addPCollectionConsumer(
           getOnlyElement(context.getPTransform().getInputsMap().values()),
-          context.addOutgoingDataEndpoint(port.getApiServiceDescriptor(), coder));
+          new WindowedFnDataReceiver<InputT>() {
+            @Override
+            public void accept(InputT input, Instant timestamp, BoundedWindow window,
+                PaneInfo paneInfo) throws Exception {
+              dataEndpointReceiver.accept(WindowedValue.of(input, timestamp, window, paneInfo));
+            }
+
+            @Override
+            public void accept(InputT input, Instant timestamp,
+                Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+              dataEndpointReceiver.accept(WindowedValue.of(input, timestamp, windows, paneInfo));
+            }
+          });
+
 
       return new BeamFnDataWriteRunner();
     }

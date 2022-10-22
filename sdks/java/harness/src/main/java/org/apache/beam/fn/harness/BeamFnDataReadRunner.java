@@ -47,8 +47,8 @@ import org.apache.beam.runners.core.metrics.MonitoringInfoEncodings;
 import org.apache.beam.runners.core.metrics.ShortIdMap;
 import org.apache.beam.runners.core.metrics.SimpleMonitoringInfoBuilder;
 import org.apache.beam.sdk.coders.Coder;
-import org.apache.beam.sdk.fn.data.FnDataReceiver;
 import org.apache.beam.sdk.fn.data.RemoteGrpcPortRead;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.vendor.grpc.v1p48p1.com.google.protobuf.ByteString;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableMap;
@@ -84,7 +84,7 @@ public class BeamFnDataReadRunner<OutputT> {
     public BeamFnDataReadRunner<OutputT> createRunnerForPTransform(Context context)
         throws IOException {
 
-      FnDataReceiver<WindowedValue<OutputT>> consumer =
+      WindowedFnDataReceiver<OutputT> consumer =
           context.getPCollectionConsumer(
               getOnlyElement(context.getPTransform().getOutputsMap().values()));
 
@@ -109,7 +109,7 @@ public class BeamFnDataReadRunner<OutputT> {
 
   private final String pTransformId;
   private final Endpoints.ApiServiceDescriptor apiServiceDescriptor;
-  private final FnDataReceiver<WindowedValue<OutputT>> consumer;
+  private final WindowedFnDataReceiver<OutputT> consumer;
   private final Supplier<String> processBundleInstructionIdSupplier;
   private final Coder<WindowedValue<OutputT>> coder;
   private final String dataChannelReadIndexShortId;
@@ -130,7 +130,7 @@ public class BeamFnDataReadRunner<OutputT> {
       Map<String, RunnerApi.Coder> coders,
       BeamFnStateClient beamFnStateClient,
       Consumer<BundleProgressReporter> addBundleProgressReporter,
-      FnDataReceiver<WindowedValue<OutputT>> consumer)
+      WindowedFnDataReceiver<OutputT> consumer)
       throws IOException {
     this.pTransformId = pTransformId;
     RemoteGrpcPort port = RemoteGrpcPortRead.fromPTransform(grpcReadNode).getPort();
@@ -210,7 +210,7 @@ public class BeamFnDataReadRunner<OutputT> {
       }
       index += 1;
     }
-    consumer.accept(element);
+    consumer.accept(element.getValue(), element.getTimestamp(), element.getWindows(), element.getPane());
   }
 
   public void trySplit(

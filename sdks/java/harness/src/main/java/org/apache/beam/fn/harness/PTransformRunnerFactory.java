@@ -34,10 +34,10 @@ import org.apache.beam.runners.core.construction.Timer;
 import org.apache.beam.runners.core.metrics.ShortIdMap;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.fn.data.FnDataReceiver;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.function.ThrowingRunnable;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.transforms.DoFn;
-import org.apache.beam.sdk.util.WindowedValue;
 
 /** A factory able to instantiate an appropriate handler for a given PTransform. */
 @SuppressWarnings({
@@ -91,10 +91,12 @@ public interface PTransformRunnerFactory<T> {
 
     /** Register as a consumer for a given PCollection id. */
     <T> void addPCollectionConsumer(
-        String pCollectionId, FnDataReceiver<WindowedValue<T>> consumer);
+        String pCollectionId, WindowedFnDataReceiver<T> consumer);
 
-    /** Returns a {@link FnDataReceiver} to send output to for the specified PCollection id. */
-    <T> FnDataReceiver<T> getPCollectionConsumer(String pCollectionId);
+    /**
+     * Returns a {@link WindowedFnDataReceiver} to send output to for the specified PCollection id.
+     */
+    <T> WindowedFnDataReceiver<T> getPCollectionConsumer(String pCollectionId);
 
     /**
      * Registers the outbound data endpoint with given {@link Endpoints.ApiServiceDescriptor} and

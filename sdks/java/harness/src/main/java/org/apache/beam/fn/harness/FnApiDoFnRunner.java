@@ -70,6 +70,7 @@ import org.apache.beam.sdk.coders.DoubleCoder;
 import org.apache.beam.sdk.coders.IterableCoder;
 import org.apache.beam.sdk.coders.KvCoder;
 import org.apache.beam.sdk.fn.data.FnDataReceiver;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.fn.splittabledofn.RestrictionTrackers;
 import org.apache.beam.sdk.fn.splittabledofn.RestrictionTrackers.ClaimObserver;
 import org.apache.beam.sdk.fn.splittabledofn.WatermarkEstimators;
@@ -118,7 +119,6 @@ import org.apache.beam.sdk.values.WindowingStrategy;
 import org.apache.beam.vendor.grpc.v1p48p1.com.google.protobuf.ByteString;
 import org.apache.beam.vendor.grpc.v1p48p1.com.google.protobuf.util.Durations;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.annotations.VisibleForTesting;
-import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableList;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableListMultimap;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableMap;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Iterables;
@@ -201,7 +201,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
         if (!localName.equals("")
             && localName.equals(runner.parDoPayload.getOnWindowExpirationTimerFamilySpec())) {
           context.addIncomingTimerEndpoint(
-              localName, coder, timer -> runner.processOnWindowExpiration(timer));
+              localName, coder, runner::processOnWindowExpiration);
         } else {
           context.addIncomingTimerEndpoint(
               localName, coder, timer -> runner.processTimer(localName, timeDomain, timer));
@@ -230,10 +230,10 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
   private final Map<TupleTag<?>, Coder<?>> outputCoders;
   private final Map<String, KV<TimeDomain, Coder<Timer<Object>>>> timerFamilyInfos;
   private final ParDoPayload parDoPayload;
-  private final ListMultimap<String, FnDataReceiver<WindowedValue<?>>> localNameToConsumer;
+  private final ListMultimap<String, WindowedFnDataReceiver<?>> localNameToConsumer;
   private final BundleSplitListener splitListener;
   private final BundleFinalizer bundleFinalizer;
-  private final Collection<FnDataReceiver<WindowedValue<OutputT>>> mainOutputConsumers;
+  private final Collection<WindowedFnDataReceiver<OutputT>> mainOutputConsumers;
 
   private final String mainInputId;
   private final FnApiStateAccessor<?> stateAccessor;
@@ -261,28 +261,30 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
 
   // The member variables below are only valid for the lifetime of certain methods.
   /** Only valid during {@code processElement...} methods, null otherwise. */
-  private WindowedValue<InputT> currentElement;
+  private InputT currentElement;
+
+  /** Only valid during {@code processElement...} methods, null otherwise. */
+  private Instant currentTimestamp;
+
+  /** Only valid during {@code processElement...} methods, null otherwise. */
+  private Collection<? extends BoundedWindow> currentWindows;
+
+  /** Only valid during {@code processElement...} methods, null otherwise. */
+  private PaneInfo currentPaneInfo;
 
   private Object currentKey;
 
   /**
-   * Only valud during {@link
-   * #processElementForWindowObservingSizedElementAndRestriction(WindowedValue)} and {@link
-   * #processElementForWindowObservingTruncateRestriction(WindowedValue)}.
-   */
-  private List<BoundedWindow> currentWindows;
-
-  /**
-   * Only valud during {@link
-   * #processElementForWindowObservingSizedElementAndRestriction(WindowedValue)} and {@link
-   * #processElementForWindowObservingTruncateRestriction(WindowedValue)}.
+   * Only valid during {@link
+   * #processElementForWindowObservingSizedElementAndRestriction} and {@link
+   * #processElementForWindowObservingTruncateRestriction}.
    */
   private int windowStopIndex;
 
   /**
-   * Only valud during {@link
-   * #processElementForWindowObservingSizedElementAndRestriction(WindowedValue)} and {@link
-   * #processElementForWindowObservingTruncateRestriction(WindowedValue)}.
+   * Only valid during {@link
+   * #processElementForWindowObservingSizedElementAndRestriction} and {@link
+   * #processElementForWindowObservingTruncateRestriction}.
    */
   private int windowCurrentIndex;
 
@@ -349,8 +351,8 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       Consumer<ThrowingRunnable> addFinishFunction,
       Consumer<ThrowingRunnable> addResetFunction,
       Consumer<ThrowingRunnable> addTearDownFunction,
-      Function<String, FnDataReceiver<WindowedValue<?>>> getPCollectionConsumer,
-      BiConsumer<String, FnDataReceiver> addPCollectionConsumer,
+      Function<String, WindowedFnDataReceiver<?>> getPCollectionConsumer,
+      BiConsumer<String, WindowedFnDataReceiver> addPCollectionConsumer,
       BiFunction<String, Coder<Timer<Object>>, FnDataReceiver<Timer<Object>>>
           getOutgoingTimersConsumer,
       Consumer<BundleProgressReporter> addBundleProgressReporter,
@@ -472,7 +474,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       throw new IllegalArgumentException("Malformed ParDoPayload", exn);
     }
 
-    ImmutableListMultimap.Builder<String, FnDataReceiver<WindowedValue<?>>>
+    ImmutableListMultimap.Builder<String, WindowedFnDataReceiver<?>>
         localNameToConsumerBuilder = ImmutableListMultimap.builder();
     for (Map.Entry<String, String> entry : pTransform.getOutputsMap().entrySet()) {
       localNameToConsumerBuilder.putAll(
@@ -486,7 +488,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     this.onWindowExpirationContext = new OnWindowExpirationContext<>();
 
     this.mainOutputConsumers =
-        (Collection<FnDataReceiver<WindowedValue<OutputT>>>)
+        (Collection<WindowedFnDataReceiver<OutputT>>)
             (Collection) localNameToConsumer.get(mainOutputTag.getId());
     this.doFnSchemaInformation = ParDoTranslation.getSchemaInformation(parDoPayload);
     this.sideInputMapping = ParDoTranslation.getSideInputMapping(parDoPayload);
@@ -515,7 +517,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     } catch (IOException e) {
       throw new RuntimeException(e);
     }
-    final FnDataReceiver<WindowedValue> mainInputConsumer;
+    final WindowedFnDataReceiver<InputT> mainInputConsumer;
     switch (pTransform.getSpec().getUrn()) {
       case PTransformTranslation.PAR_DO_TRANSFORM_URN:
         if (doFnSignature.processElement().observesWindow() || !sideInputMapping.isEmpty()) {
@@ -544,13 +546,13 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
             || (doFnSignature.newTracker() != null && doFnSignature.newTracker().observesWindow())
             || (doFnSignature.getSize() != null && doFnSignature.getSize().observesWindow())
             || !sideInputMapping.isEmpty()) {
-          mainInputConsumer = this::processElementForWindowObservingSplitRestriction;
+          mainInputConsumer = (WindowedFnDataReceiver<InputT>) (WindowedFnDataReceiver<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>>) this::processElementForWindowObservingSplitRestriction;
           this.processContext =
               new SizedRestrictionWindowObservingProcessBundleContext(
                   PTransformTranslation.SPLITTABLE_SPLIT_AND_SIZE_RESTRICTIONS_URN);
 
         } else {
-          mainInputConsumer = this::processElementForSplitRestriction;
+          mainInputConsumer = (WindowedFnDataReceiver<InputT>) (WindowedFnDataReceiver<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>>) this::processElementForSplitRestriction;
           this.processContext =
               new SizedRestrictionNonWindowObservingProcessBundleContext(
                   PTransformTranslation.SPLITTABLE_SPLIT_AND_SIZE_RESTRICTIONS_URN);
@@ -566,13 +568,13 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
           if (mainOutputConsumers.size() == 1
               && Iterables.getOnlyElement(mainOutputConsumers) instanceof HandlesSplits) {
             mainInputConsumer =
-                new SplittableFnDataReceiver() {
+                new SplittableWindowedFnDataReceiver<InputT>() {
                   private final HandlesSplits splitDelegate =
                       (HandlesSplits) Iterables.getOnlyElement(mainOutputConsumers);
 
                   @Override
-                  public void accept(WindowedValue input) throws Exception {
-                    processElementForWindowObservingTruncateRestriction(input);
+                  public void accept(InputT input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+                    processElementForWindowObservingTruncateRestriction((KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>)input, timestamp, windows, paneInfo);
                   }
 
                   @Override
@@ -596,7 +598,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
                   }
                 };
           } else {
-            mainInputConsumer = this::processElementForWindowObservingTruncateRestriction;
+            mainInputConsumer = (WindowedFnDataReceiver<InputT>) (WindowedFnDataReceiver<KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>>) this::processElementForWindowObservingTruncateRestriction;
           }
           this.processContext =
               new SizedRestrictionWindowObservingProcessBundleContext(
@@ -606,13 +608,13 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
           if (mainOutputConsumers.size() == 1
               && Iterables.getOnlyElement(mainOutputConsumers) instanceof HandlesSplits) {
             mainInputConsumer =
-                new SplittableFnDataReceiver() {
+                new SplittableWindowedFnDataReceiver<InputT>() {
                   private final HandlesSplits splitDelegate =
                       (HandlesSplits) Iterables.getOnlyElement(mainOutputConsumers);
 
                   @Override
-                  public void accept(WindowedValue input) throws Exception {
-                    processElementForTruncateRestriction(input);
+                  public void accept(InputT input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+                    processElementForTruncateRestriction((KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>)input, timestamp, windows, paneInfo);
                   }
 
                   @Override
@@ -626,7 +628,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
                   }
                 };
           } else {
-            mainInputConsumer = this::processElementForTruncateRestriction;
+            mainInputConsumer = (WindowedFnDataReceiver<InputT>) (WindowedFnDataReceiver<KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>>) this::processElementForTruncateRestriction;
           }
           this.processContext =
               new SizedRestrictionNonWindowObservingProcessBundleContext(
@@ -641,21 +643,21 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
                 && doFnSignature.newWatermarkEstimator().observesWindow())
             || !sideInputMapping.isEmpty()) {
           mainInputConsumer =
-              new SplittableFnDataReceiver() {
+              new SplittableWindowedFnDataReceiver<InputT>() {
                 @Override
-                public void accept(WindowedValue input) throws Exception {
-                  processElementForWindowObservingSizedElementAndRestriction(input);
+                public void accept(InputT input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+                  processElementForWindowObservingSizedElementAndRestriction((KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>)input, timestamp, windows, paneInfo);
                 }
               };
           this.processContext = new WindowObservingProcessBundleContext();
         } else {
           mainInputConsumer =
-              new SplittableFnDataReceiver() {
+              new SplittableWindowedFnDataReceiver<InputT>() {
                 @Override
-                public void accept(WindowedValue input) throws Exception {
+                public void accept(InputT input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
                   // TODO(BEAM-10303): Create a variant which is optimized to not observe the
                   // windows.
-                  processElementForWindowObservingSizedElementAndRestriction(input);
+                  processElementForWindowObservingSizedElementAndRestriction((KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>)input, timestamp, windows, paneInfo);
                 }
               };
           this.processContext = new WindowObservingProcessBundleContext();
@@ -778,13 +780,12 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     if (currentKey != null) {
       return currentKey;
     }
-    // TODO: Maybe memoize the key?
     if (currentElement != null) {
       checkState(
-          currentElement.getValue() instanceof KV,
+          currentElement instanceof KV,
           "Accessing state in unkeyed context. Current element is not a KV: %s.",
-          currentElement.getValue());
-      return ((KV) currentElement.getValue()).getKey();
+          currentElement);
+      return ((KV) currentElement).getKey();
     } else if (currentTimer != null) {
       return currentTimer.getUserKey();
     }
@@ -795,74 +796,98 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     doFnInvoker.invokeStartBundle(startBundleArgumentProvider);
   }
 
-  private void processElementForParDo(WindowedValue<InputT> elem) {
+  private void processElementForParDo(InputT elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
     currentElement = elem;
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
     try {
       doFnInvoker.invokeProcessElement(processContext);
     } finally {
       currentElement = null;
+      currentTimestamp = null;
+      currentWindows = null;
+      currentPaneInfo = null;
     }
   }
 
-  private void processElementForWindowObservingParDo(WindowedValue<InputT> elem) {
+  private void processElementForWindowObservingParDo(InputT elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
     currentElement = elem;
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
     try {
       Iterator<BoundedWindow> windowIterator =
-          (Iterator<BoundedWindow>) elem.getWindows().iterator();
+          (Iterator<BoundedWindow>) windows.iterator();
       while (windowIterator.hasNext()) {
         currentWindow = windowIterator.next();
         doFnInvoker.invokeProcessElement(processContext);
       }
     } finally {
       currentElement = null;
+      currentTimestamp = null;
+      currentWindows = null;
+      currentPaneInfo = null;
       currentWindow = null;
     }
   }
 
-  private void processElementForPairWithRestriction(WindowedValue<InputT> elem) {
+  private void processElementForPairWithRestriction(InputT elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
     currentElement = elem;
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
     try {
       currentRestriction = doFnInvoker.invokeGetInitialRestriction(processContext);
       outputTo(
           mainOutputConsumers,
-          (WindowedValue)
-              elem.withValue(
-                  KV.of(
-                      elem.getValue(),
-                      KV.of(
-                          currentRestriction,
-                          doFnInvoker.invokeGetInitialWatermarkEstimatorState(processContext)))));
+          (OutputT) KV.of(
+              elem,
+              KV.of(
+                  currentRestriction,
+                  doFnInvoker.invokeGetInitialWatermarkEstimatorState(processContext))),
+          timestamp,
+          windows,
+          paneInfo);
     } finally {
       currentElement = null;
+      currentTimestamp = null;
+      currentWindows = null;
+      currentPaneInfo = null;
       currentRestriction = null;
     }
 
     this.stateAccessor.finalizeState();
   }
 
-  private void processElementForWindowObservingPairWithRestriction(WindowedValue<InputT> elem) {
+  private void processElementForWindowObservingPairWithRestriction(InputT elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
     currentElement = elem;
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
     try {
       Iterator<BoundedWindow> windowIterator =
-          (Iterator<BoundedWindow>) elem.getWindows().iterator();
+          (Iterator<BoundedWindow>) windows.iterator();
       while (windowIterator.hasNext()) {
         currentWindow = windowIterator.next();
         currentRestriction = doFnInvoker.invokeGetInitialRestriction(processContext);
+        OutputT output =                   (OutputT)  KV.of(
+            elem,
+            KV.of(
+                currentRestriction,
+                doFnInvoker.invokeGetInitialWatermarkEstimatorState(processContext)));
         outputTo(
             mainOutputConsumers,
-            (WindowedValue)
-                WindowedValue.of(
-                    KV.of(
-                        elem.getValue(),
-                        KV.of(
-                            currentRestriction,
-                            doFnInvoker.invokeGetInitialWatermarkEstimatorState(processContext))),
-                    currentElement.getTimestamp(),
-                    currentWindow,
-                    currentElement.getPane()));
+            output,
+            timestamp,
+            Collections.singletonList(currentWindow),
+            paneInfo);
       }
     } finally {
       currentElement = null;
+      currentTimestamp = null;
+      currentWindows = null;
+      currentPaneInfo = null;
       currentWindow = null;
       currentRestriction = null;
     }
@@ -871,10 +896,13 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
   }
 
   private void processElementForSplitRestriction(
-      WindowedValue<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>> elem) {
-    currentElement = elem.withValue(elem.getValue().getKey());
-    currentRestriction = elem.getValue().getValue().getKey();
-    currentWatermarkEstimatorState = elem.getValue().getValue().getValue();
+      KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>> elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
+    currentElement = elem.getKey();
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
+    currentRestriction = elem.getValue().getKey();
+    currentWatermarkEstimatorState = elem.getValue().getValue();
     currentTracker =
         RestrictionTrackers.observe(
             doFnInvoker.invokeNewTracker(processContext),
@@ -889,6 +917,9 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       doFnInvoker.invokeSplitRestriction(processContext);
     } finally {
       currentElement = null;
+      currentTimestamp = null;
+      currentWindows = null;
+      currentPaneInfo = null;
       currentRestriction = null;
       currentWatermarkEstimatorState = null;
       currentTracker = null;
@@ -898,13 +929,16 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
   }
 
   private void processElementForWindowObservingSplitRestriction(
-      WindowedValue<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>> elem) {
-    currentElement = elem.withValue(elem.getValue().getKey());
-    currentRestriction = elem.getValue().getValue().getKey();
-    currentWatermarkEstimatorState = elem.getValue().getValue().getValue();
+      KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>> elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
+    currentElement = elem.getKey();
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
+    currentRestriction = elem.getValue().getKey();
+    currentWatermarkEstimatorState = elem.getValue().getValue();
     try {
       Iterator<BoundedWindow> windowIterator =
-          (Iterator<BoundedWindow>) elem.getWindows().iterator();
+          (Iterator<BoundedWindow>) windows.iterator();
       while (windowIterator.hasNext()) {
         currentWindow = windowIterator.next();
         currentTracker =
@@ -921,6 +955,9 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       }
     } finally {
       currentElement = null;
+      currentTimestamp = null;
+      currentWindows = null;
+      currentPaneInfo = null;
       currentRestriction = null;
       currentWatermarkEstimatorState = null;
       currentWindow = null;
@@ -931,10 +968,13 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
   }
 
   private void processElementForTruncateRestriction(
-      WindowedValue<KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>> elem) {
-    currentElement = elem.withValue(elem.getValue().getKey().getKey());
-    currentRestriction = elem.getValue().getKey().getValue().getKey();
-    currentWatermarkEstimatorState = elem.getValue().getKey().getValue().getValue();
+      KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double> elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
+    currentElement = elem.getKey().getKey();
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
+    currentRestriction = elem.getKey().getValue().getKey();
+    currentWatermarkEstimatorState = elem.getKey().getValue().getValue();
     currentTracker =
         RestrictionTrackers.observe(
             doFnInvoker.invokeNewTracker(processContext),
@@ -952,31 +992,36 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
         processContext.output(truncatedRestriction.getTruncatedRestriction());
       }
     } finally {
-      currentTracker = null;
       currentElement = null;
+      currentTimestamp = null;
+      currentWindows = null;
+      currentPaneInfo = null;
       currentRestriction = null;
       currentWatermarkEstimatorState = null;
+      currentTracker = null;
     }
 
     this.stateAccessor.finalizeState();
   }
 
   private void processElementForWindowObservingTruncateRestriction(
-      WindowedValue<KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>> elem) {
-    currentElement = elem.withValue(elem.getValue().getKey().getKey());
+      KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double> elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
+    currentElement = elem.getKey().getKey();
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
     try {
       windowCurrentIndex = -1;
-      windowStopIndex = currentElement.getWindows().size();
-      currentWindows = ImmutableList.copyOf(currentElement.getWindows());
+      windowStopIndex = windows.size();
       while (true) {
         synchronized (splitLock) {
           windowCurrentIndex++;
           if (windowCurrentIndex >= windowStopIndex) {
             break;
           }
-          currentRestriction = elem.getValue().getKey().getValue().getKey();
-          currentWatermarkEstimatorState = elem.getValue().getKey().getValue().getValue();
-          currentWindow = currentWindows.get(windowCurrentIndex);
+          currentRestriction = elem.getKey().getValue().getKey();
+          currentWatermarkEstimatorState = elem.getKey().getValue().getValue();
+          currentWindow = Iterables.get(currentWindows, windowCurrentIndex);
           currentTracker =
               RestrictionTrackers.observe(
                   doFnInvoker.invokeNewTracker(processContext),
@@ -999,13 +1044,15 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
         }
       }
     } finally {
-      currentTracker = null;
       currentElement = null;
+      currentTimestamp = null;
+      currentWindows = null;
+      currentPaneInfo = null;
       currentRestriction = null;
       currentWatermarkEstimatorState = null;
       currentWatermarkEstimator = null;
       currentWindow = null;
-      currentWindows = null;
+      currentTracker = null;
       initialWatermark = null;
     }
 
@@ -1056,21 +1103,24 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
   }
 
   private void processElementForWindowObservingSizedElementAndRestriction(
-      WindowedValue<KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double>> elem) {
-    currentElement = elem.withValue(elem.getValue().getKey().getKey());
+      KV<KV<InputT, KV<RestrictionT, WatermarkEstimatorStateT>>, Double> elem, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
+    currentElement = elem.getKey().getKey();
+    currentTimestamp = timestamp;
+    currentWindows = windows;
+    currentPaneInfo = paneInfo;
     try {
       windowCurrentIndex = -1;
-      windowStopIndex = currentElement.getWindows().size();
-      currentWindows = ImmutableList.copyOf(currentElement.getWindows());
+      windowStopIndex = windows.size();
+      currentWindows = windows;
       while (true) {
         synchronized (splitLock) {
           windowCurrentIndex++;
           if (windowCurrentIndex >= windowStopIndex) {
             return;
           }
-          currentRestriction = elem.getValue().getKey().getValue().getKey();
-          currentWatermarkEstimatorState = elem.getValue().getKey().getValue().getValue();
-          currentWindow = currentWindows.get(windowCurrentIndex);
+          currentRestriction = elem.getKey().getValue().getKey();
+          currentWatermarkEstimatorState = elem.getKey().getValue().getValue();
+          currentWindow = Iterables.get(currentWindows, windowCurrentIndex);
           currentTracker =
               RestrictionTrackers.observe(
                   doFnInvoker.invokeNewTracker(processContext),
@@ -1116,12 +1166,14 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     } finally {
       synchronized (splitLock) {
         currentElement = null;
+        currentTimestamp = null;
+        currentWindows = null;
+        currentPaneInfo = null;
         currentRestriction = null;
         currentWatermarkEstimatorState = null;
         currentWindow = null;
         currentTracker = null;
         currentWatermarkEstimator = null;
-        currentWindows = null;
         initialWatermark = null;
       }
     }
@@ -1131,8 +1183,8 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
    * An abstract class which forwards split and progress calls allowing the implementer to choose
    * where input elements are sent.
    */
-  private abstract class SplittableFnDataReceiver
-      implements HandlesSplits, FnDataReceiver<WindowedValue> {
+  private abstract class SplittableWindowedFnDataReceiver<T>
+      implements HandlesSplits, WindowedFnDataReceiver<T> {
     @Override
     public HandlesSplits.SplitResult trySplit(double fractionOfRemainder) {
       return trySplitForElementAndRestriction(fractionOfRemainder, Duration.ZERO);
@@ -1279,6 +1331,8 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       SplitResultsWithStopIndex splitResult =
           computeSplitForProcessOrTruncate(
               currentElement,
+              currentTimestamp,
+              currentPaneInfo,
               currentRestriction,
               currentWindow,
               currentWindows,
@@ -1315,18 +1369,21 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
   }
 
   private static <WatermarkEstimatorStateT> WindowedSplitResult computeWindowSplitResult(
-      WindowedValue currentElement,
+      Object currentElement,
+      Instant currentTimestamp,
+      PaneInfo currentPaneInfo,
       Object currentRestriction,
       BoundedWindow currentWindow,
-      List<BoundedWindow> windows,
+      Collection<? extends BoundedWindow> windows,
       WatermarkEstimatorStateT currentWatermarkEstimatorState,
       int toIndex,
       int fromIndex,
       int stopWindowIndex,
       SplitResult<?> splitResult,
       KV<Instant, WatermarkEstimatorStateT> watermarkAndState) {
-    List<BoundedWindow> primaryFullyProcessedWindows = windows.subList(0, toIndex);
-    List<BoundedWindow> residualUnprocessedWindows = windows.subList(fromIndex, stopWindowIndex);
+    List<? extends BoundedWindow> windowList = new ArrayList<>(windows);
+    List<? extends BoundedWindow> primaryFullyProcessedWindows = windowList.subList(0, toIndex);
+    List<? extends BoundedWindow> residualUnprocessedWindows = windowList.subList(fromIndex, stopWindowIndex);
     WindowedSplitResult windowedSplitResult;
 
     windowedSplitResult =
@@ -1335,47 +1392,49 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
                 ? null
                 : WindowedValue.of(
                     KV.of(
-                        currentElement.getValue(),
+                        currentElement,
                         KV.of(currentRestriction, currentWatermarkEstimatorState)),
-                    currentElement.getTimestamp(),
+                    currentTimestamp,
                     primaryFullyProcessedWindows,
-                    currentElement.getPane()),
+                    currentPaneInfo),
             splitResult == null
                 ? null
                 : WindowedValue.of(
                     KV.of(
-                        currentElement.getValue(),
+                        currentElement,
                         KV.of(splitResult.getPrimary(), currentWatermarkEstimatorState)),
-                    currentElement.getTimestamp(),
+                    currentTimestamp,
                     currentWindow,
-                    currentElement.getPane()),
+                    currentPaneInfo),
             splitResult == null
                 ? null
                 : WindowedValue.of(
                     KV.of(
-                        currentElement.getValue(),
+                        currentElement,
                         KV.of(splitResult.getResidual(), watermarkAndState.getValue())),
-                    currentElement.getTimestamp(),
+                    currentTimestamp,
                     currentWindow,
-                    currentElement.getPane()),
+                    currentPaneInfo),
             residualUnprocessedWindows.isEmpty()
                 ? null
                 : WindowedValue.of(
                     KV.of(
-                        currentElement.getValue(),
+                        currentElement,
                         KV.of(currentRestriction, currentWatermarkEstimatorState)),
-                    currentElement.getTimestamp(),
+                    currentTimestamp,
                     residualUnprocessedWindows,
-                    currentElement.getPane()));
+                    currentPaneInfo));
     return windowedSplitResult;
   }
 
   @VisibleForTesting
   static <WatermarkEstimatorStateT> SplitResultsWithStopIndex computeSplitForProcessOrTruncate(
-      WindowedValue currentElement,
+      Object currentElement,
+      Instant currentTimestamp,
+      PaneInfo currentPaneInfo,
       Object currentRestriction,
       BoundedWindow currentWindow,
-      List<BoundedWindow> windows,
+      Collection<? extends BoundedWindow> windows,
       WatermarkEstimatorStateT currentWatermarkEstimatorState,
       double fractionOfRemainder,
       RestrictionTracker currentTracker,
@@ -1428,6 +1487,8 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
         windowedSplitResult =
             computeWindowSplitResult(
                 currentElement,
+                currentTimestamp,
+                currentPaneInfo,
                 currentRestriction,
                 currentWindow,
                 windows,
@@ -1455,6 +1516,8 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
         windowedSplitResult =
             computeWindowSplitResult(
                 currentElement,
+                currentTimestamp
+                ,currentPaneInfo,
                 currentRestriction,
                 currentWindow,
                 windows,
@@ -1480,6 +1543,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       windowedSplitResult =
           computeWindowSplitResult(
               currentElement,
+              currentTimestamp, currentPaneInfo,
               currentRestriction,
               currentWindow,
               windows,
@@ -1631,6 +1695,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       SplitResultsWithStopIndex splitResult =
           computeSplitForProcessOrTruncate(
               currentElement,
+              currentTimestamp, currentPaneInfo,
               currentRestriction,
               currentWindow,
               currentWindows,
@@ -1781,14 +1846,30 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
 
   /** Outputs the given element to the specified set of consumers wrapping any exceptions. */
   private <T> void outputTo(
-      Collection<FnDataReceiver<WindowedValue<T>>> consumers, WindowedValue<T> output) {
+      Collection<WindowedFnDataReceiver<T>> consumers, T output, Instant timestamp, BoundedWindow window, PaneInfo paneInfo) {
     if (currentWatermarkEstimator instanceof TimestampObservingWatermarkEstimator) {
       ((TimestampObservingWatermarkEstimator) currentWatermarkEstimator)
-          .observeTimestamp(output.getTimestamp());
+          .observeTimestamp(timestamp);
     }
     try {
-      for (FnDataReceiver<WindowedValue<T>> consumer : consumers) {
-        consumer.accept(output);
+      for (WindowedFnDataReceiver<T> consumer : consumers) {
+        consumer.accept(output, timestamp, Collections.singletonList(window), paneInfo);
+      }
+    } catch (Throwable t) {
+      throw UserCodeException.wrap(t);
+    }
+  }
+
+  /** Outputs the given element to the specified set of consumers wrapping any exceptions. */
+  private <T> void outputTo(
+      Collection<WindowedFnDataReceiver<T>> consumers, T output, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) {
+    if (currentWatermarkEstimator instanceof TimestampObservingWatermarkEstimator) {
+      ((TimestampObservingWatermarkEstimator) currentWatermarkEstimator)
+          .observeTimestamp(timestamp);
+    }
+    try {
+      for (WindowedFnDataReceiver<T> consumer : consumers) {
+        consumer.accept(output, timestamp, windows, paneInfo);
       }
     } catch (Throwable t) {
       throw UserCodeException.wrap(t);
@@ -2058,7 +2139,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
   private void checkTimestamp(Instant timestamp) {
     Instant lowerBound;
     try {
-      lowerBound = currentElement.getTimestamp().minus(doFn.getAllowedTimestampSkew());
+      lowerBound = currentTimestamp.minus(doFn.getAllowedTimestampSkew());
     } catch (ArithmeticException e) {
       lowerBound = BoundedWindow.TIMESTAMP_MIN_VALUE;
     }
@@ -2071,7 +2152,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
                   + "than %s. See the DoFn#getAllowedTimestampSkew() Javadoc for details on "
                   + "changing the allowed skew.",
               timestamp,
-              currentElement.getTimestamp(),
+              currentTimestamp,
               doFn.getAllowedTimestampSkew().getMillis() >= Integer.MAX_VALUE
                   ? doFn.getAllowedTimestampSkew()
                   : PeriodFormat.getDefault().print(doFn.getAllowedTimestampSkew().toPeriod()),
@@ -2129,17 +2210,17 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       @Override
       public void output(OutputT output, Instant timestamp, BoundedWindow window) {
         outputTo(
-            mainOutputConsumers, WindowedValue.of(output, timestamp, window, PaneInfo.NO_FIRING));
+            mainOutputConsumers, output, timestamp, window, PaneInfo.NO_FIRING);
       }
 
       @Override
       public <T> void output(TupleTag<T> tag, T output, Instant timestamp, BoundedWindow window) {
-        Collection<FnDataReceiver<WindowedValue<T>>> consumers =
+        Collection<WindowedFnDataReceiver<T>> consumers =
             (Collection) localNameToConsumer.get(tag.getId());
         if (consumers == null) {
           throw new IllegalArgumentException(String.format("Unknown output tag %s", tag));
         }
-        outputTo(consumers, WindowedValue.of(output, timestamp, window, PaneInfo.NO_FIRING));
+        outputTo(consumers, output, timestamp, window, PaneInfo.NO_FIRING);
       }
     }
 
@@ -2206,9 +2287,9 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     @Override
     public org.apache.beam.sdk.state.Timer timer(String timerId) {
       checkState(
-          currentElement.getValue() instanceof KV,
+          currentElement instanceof KV,
           "Accessing timer in unkeyed context. Current element is not a KV: %s.",
-          currentElement.getValue());
+          currentElement);
 
       // For the initial timestamps we pass in the current elements timestamp for the hold timestamp
       // and the current element's timestamp which will be used for the fire timestamp if this
@@ -2217,12 +2298,12 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
           translateTimeDomain(parDoPayload.getTimerFamilySpecsMap().get(timerId).getTimeDomain());
       return new FnApiTimer(
           timerId,
-          ((KV) currentElement.getValue()).getKey(),
+          ((KV) currentElement).getKey(),
           "",
           currentWindow,
-          currentElement.getTimestamp(),
-          currentElement.getTimestamp(),
-          currentElement.getPane(),
+          currentTimestamp,
+          currentTimestamp,
+          currentPaneInfo,
           timeDomain);
     }
 
@@ -2230,11 +2311,11 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     public TimerMap timerFamily(String timerFamilyId) {
       return new FnApiTimerMap(
           timerFamilyId,
-          ((KV) currentElement.getValue()).getKey(),
+          ((KV) currentElement).getKey(),
           currentWindow,
-          currentElement.getTimestamp(),
-          currentElement.getTimestamp(),
-          currentElement.getPane());
+          currentTimestamp,
+          currentTimestamp,
+          currentPaneInfo);
     }
 
     @Override
@@ -2242,19 +2323,22 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       // TODO: Check that timestamp is valid once all runners can provide proper timestamps.
       outputTo(
           mainOutputConsumers,
-          WindowedValue.of(output, timestamp, currentWindow, currentElement.getPane()));
+          output,
+          timestamp,
+          currentWindow,
+          currentPaneInfo);
     }
 
     @Override
     public <T> void outputWithTimestamp(TupleTag<T> tag, T output, Instant timestamp) {
       // TODO: Check that timestamp is valid once all runners can provide proper timestamps.
-      Collection<FnDataReceiver<WindowedValue<T>>> consumers =
+      Collection<WindowedFnDataReceiver<T>> consumers =
           (Collection) localNameToConsumer.get(tag.getId());
       if (consumers == null) {
         throw new IllegalArgumentException(String.format("Unknown output tag %s", tag));
       }
       outputTo(
-          consumers, WindowedValue.of(output, timestamp, currentWindow, currentElement.getPane()));
+          consumers, output, timestamp, currentWindow, currentPaneInfo);
     }
   }
 
@@ -2268,7 +2352,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     }
 
     @Override
-    // OutputT == RestrictionT
+    // OutputT == KV<InputT, KV<RestrictionT, Size>>
     public void outputWithTimestamp(OutputT output, Instant timestamp) {
       checkTimestamp(timestamp);
       double size =
@@ -2291,17 +2375,17 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
                 }
               });
 
+      OutputT outputT = (OutputT) KV.of(
+          KV.of(
+              currentElement, KV.of(output, currentWatermarkEstimatorState)),
+          size);
       outputTo(
           mainOutputConsumers,
-          (WindowedValue<OutputT>)
-              WindowedValue.of(
-                  KV.of(
-                      KV.of(
-                          currentElement.getValue(), KV.of(output, currentWatermarkEstimatorState)),
-                      size),
-                  timestamp,
-                  currentWindow,
-                  currentElement.getPane()));
+          outputT,
+
+              timestamp,
+              currentWindow,
+              currentPaneInfo);
     }
   }
 
@@ -2315,7 +2399,7 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
     }
 
     @Override
-    // OutputT == RestrictionT
+    // OutputT == KV<InputT, KV<RestrictionT, Size>>
     public void outputWithTimestamp(OutputT output, Instant timestamp) {
       checkTimestamp(timestamp);
       double size =
@@ -2338,17 +2422,16 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
                 }
               });
 
+      OutputT outputT = (OutputT) KV.of(
+          KV.of(
+              currentElement, KV.of(output, currentWatermarkEstimatorState)),
+          size);
       outputTo(
           mainOutputConsumers,
-          (WindowedValue<OutputT>)
-              WindowedValue.of(
-                  KV.of(
-                      KV.of(
-                          currentElement.getValue(), KV.of(output, currentWatermarkEstimatorState)),
-                      size),
-                  timestamp,
-                  currentElement.getWindows(),
-                  currentElement.getPane()));
+          outputT,
+              timestamp,
+              currentWindows,
+              currentPaneInfo);
     }
   }
 
@@ -2359,22 +2442,22 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       checkTimestamp(timestamp);
       outputTo(
           mainOutputConsumers,
-          WindowedValue.of(
-              output, timestamp, currentElement.getWindows(), currentElement.getPane()));
+          output,
+          timestamp, currentWindows, currentPaneInfo);
     }
 
     @Override
     public <T> void outputWithTimestamp(TupleTag<T> tag, T output, Instant timestamp) {
       checkTimestamp(timestamp);
-      Collection<FnDataReceiver<WindowedValue<T>>> consumers =
+      Collection<WindowedFnDataReceiver<T>> consumers =
           (Collection) localNameToConsumer.get(tag.getId());
       if (consumers == null) {
         throw new IllegalArgumentException(String.format("Unknown output tag %s", tag));
       }
       outputTo(
           consumers,
-          WindowedValue.of(
-              output, timestamp, currentElement.getWindows(), currentElement.getPane()));
+          output,
+          timestamp, currentWindows, currentPaneInfo);
     }
 
     @Override
@@ -2527,27 +2610,27 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
 
     @Override
     public void output(OutputT output) {
-      outputWithTimestamp(output, currentElement.getTimestamp());
+      outputWithTimestamp(output, currentTimestamp);
     }
 
     @Override
     public <T> void output(TupleTag<T> tag, T output) {
-      outputWithTimestamp(tag, output, currentElement.getTimestamp());
+      outputWithTimestamp(tag, output, currentTimestamp);
     }
 
     @Override
     public InputT element() {
-      return currentElement.getValue();
+      return currentElement;
     }
 
     @Override
     public Instant timestamp() {
-      return currentElement.getTimestamp();
+      return currentTimestamp;
     }
 
     @Override
     public PaneInfo pane() {
-      return currentElement.getPane();
+      return currentPaneInfo;
     }
 
     @Override
@@ -2585,8 +2668,8 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
       public void output(OutputT output) {
         outputTo(
             mainOutputConsumers,
-            WindowedValue.of(
-                output, currentTimer.getHoldTimestamp(), currentWindow, currentTimer.getPane()));
+            output,
+            currentTimer.getHoldTimestamp(), currentWindow, currentTimer.getPane());
       }
 
       @Override
@@ -2594,32 +2677,33 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
         checkOnWindowExpirationTimestamp(timestamp);
         outputTo(
             mainOutputConsumers,
-            WindowedValue.of(output, timestamp, currentWindow, currentTimer.getPane()));
+            output,
+            timestamp, currentWindow, currentTimer.getPane());
       }
 
       @Override
       public <T> void output(TupleTag<T> tag, T output) {
-        Collection<FnDataReceiver<WindowedValue<T>>> consumers =
+        Collection<WindowedFnDataReceiver<T>> consumers =
             (Collection) localNameToConsumer.get(tag.getId());
         if (consumers == null) {
           throw new IllegalArgumentException(String.format("Unknown output tag %s", tag));
         }
         outputTo(
             consumers,
-            WindowedValue.of(
-                output, currentTimer.getHoldTimestamp(), currentWindow, currentTimer.getPane()));
+            output,
+            currentTimer.getHoldTimestamp(), currentWindow, currentTimer.getPane());
       }
 
       @Override
       public <T> void outputWithTimestamp(TupleTag<T> tag, T output, Instant timestamp) {
         checkOnWindowExpirationTimestamp(timestamp);
-        Collection<FnDataReceiver<WindowedValue<T>>> consumers =
+        Collection<WindowedFnDataReceiver<T>> consumers =
             (Collection) localNameToConsumer.get(tag.getId());
         if (consumers == null) {
           throw new IllegalArgumentException(String.format("Unknown output tag %s", tag));
         }
         outputTo(
-            consumers, WindowedValue.of(output, timestamp, currentWindow, currentTimer.getPane()));
+            consumers, output, timestamp, currentWindow, currentTimer.getPane());
       }
 
       @SuppressWarnings(
@@ -2739,8 +2823,8 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
         checkTimerTimestamp(currentTimer.getHoldTimestamp());
         outputTo(
             mainOutputConsumers,
-            WindowedValue.of(
-                output, currentTimer.getHoldTimestamp(), currentWindow, currentTimer.getPane()));
+            output,
+            currentTimer.getHoldTimestamp(), currentWindow, currentTimer.getPane());
       }
 
       @Override
@@ -2748,33 +2832,34 @@ public class FnApiDoFnRunner<InputT, RestrictionT, PositionT, WatermarkEstimator
         checkTimerTimestamp(timestamp);
         outputTo(
             mainOutputConsumers,
-            WindowedValue.of(output, timestamp, currentWindow, currentTimer.getPane()));
+            output,
+            timestamp, currentWindow, currentTimer.getPane());
       }
 
       @Override
       public <T> void output(TupleTag<T> tag, T output) {
         checkTimerTimestamp(currentTimer.getHoldTimestamp());
-        Collection<FnDataReceiver<WindowedValue<T>>> consumers =
+        Collection<WindowedFnDataReceiver<T>> consumers =
             (Collection) localNameToConsumer.get(tag.getId());
         if (consumers == null) {
           throw new IllegalArgumentException(String.format("Unknown output tag %s", tag));
         }
         outputTo(
             consumers,
-            WindowedValue.of(
-                output, currentTimer.getHoldTimestamp(), currentWindow, currentTimer.getPane()));
+            output,
+            currentTimer.getHoldTimestamp(), currentWindow, currentTimer.getPane());
       }
 
       @Override
       public <T> void outputWithTimestamp(TupleTag<T> tag, T output, Instant timestamp) {
         checkTimerTimestamp(timestamp);
-        Collection<FnDataReceiver<WindowedValue<T>>> consumers =
+        Collection<WindowedFnDataReceiver<T>> consumers =
             (Collection) localNameToConsumer.get(tag.getId());
         if (consumers == null) {
           throw new IllegalArgumentException(String.format("Unknown output tag %s", tag));
         }
         outputTo(
-            consumers, WindowedValue.of(output, timestamp, currentWindow, currentTimer.getPane()));
+            consumers, output, timestamp, currentWindow, currentTimer.getPane());
       }
 
       @Override

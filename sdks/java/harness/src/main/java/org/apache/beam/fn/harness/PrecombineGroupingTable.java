@@ -32,15 +32,16 @@ import org.apache.beam.runners.core.GlobalCombineFnRunners;
 import org.apache.beam.runners.core.NullSideInputReader;
 import org.apache.beam.sdk.coders.Coder;
 import org.apache.beam.sdk.fn.data.FnDataReceiver;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.transforms.Combine.CombineFn;
 import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
 import org.apache.beam.sdk.transforms.windowing.GlobalWindow;
 import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.util.Weighted;
-import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.annotations.VisibleForTesting;
+import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.Preconditions;
 import org.joda.time.Instant;
 
 /**
@@ -55,6 +56,9 @@ import org.joda.time.Instant;
 @NotThreadSafe
 public class PrecombineGroupingTable<K, InputT, AccumT>
     implements Shrinkable<PrecombineGroupingTable<K, InputT, AccumT>>, Weighted {
+
+  private static final Collection<? extends BoundedWindow> GLOBAL_WINDOWS =
+      Collections.singletonList(GlobalWindow.INSTANCE);
 
   /**
    * Returns a grouping table that combines inputs into an accumulator. The grouping table uses the
@@ -392,15 +396,19 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
    */
   @VisibleForTesting
   public void put(
-      WindowedValue<KV<K, InputT>> value, FnDataReceiver<WindowedValue<KV<K, AccumT>>> receiver)
+      KV<K, InputT> value, Instant timestamp, BoundedWindow window, WindowedFnDataReceiver<KV<K, AccumT>> receiver)
       throws Exception {
+    // TODO(lcwik) FIX ME: Consider making a SingleWindowedGroupingTableKey to make that
+    // hot path faster.
+
+
     // Ignore timestamp for grouping purposes.
     // The Pre-combine output will inherit the timestamp of one of its inputs.
     GroupingTableKey groupingKey =
         isGloballyWindowed
-            ? new GloballyWindowedTableGroupingKey(value.getValue().getKey(), keyCoder, keySizer)
+            ? new GloballyWindowedTableGroupingKey(value.getKey(), keyCoder, keySizer)
             : new WindowedGroupingTableKey(
-                value.getValue().getKey(), value.getWindows(), keyCoder, keySizer);
+                value.getKey(), Collections.singletonList(window), keyCoder, keySizer);
 
     lruMap.compute(
         groupingKey,
@@ -410,12 +418,12 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
             tableEntry =
                 new GroupingTableEntry(
                     groupingKey,
-                    value.getTimestamp(),
-                    value.getValue().getKey(),
-                    value.getValue().getValue());
+                    timestamp,
+                    value.getKey(),
+                    value.getValue());
           } else {
             weight -= tableEntry.getWeight();
-            tableEntry.add(value.getValue().getValue());
+            tableEntry.add(value.getValue());
           }
           weight += tableEntry.getWeight();
           return tableEntry;
@@ -430,7 +438,52 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
     }
   }
 
-  private void flushIfNeeded(FnDataReceiver<WindowedValue<KV<K, AccumT>>> receiver)
+  /**
+   * Adds the key and value to this table, possibly flushing some entries to output if the table is
+   * full.
+   */
+  @VisibleForTesting
+  public void put(
+      KV<K, InputT> value, Instant timestamp, Collection<? extends BoundedWindow> windows, WindowedFnDataReceiver<KV<K, AccumT>> receiver)
+      throws Exception {
+    // TODO(lcwik): Fix ME, what to do with the case where global window appears multiple times in windows list
+    // Ignore timestamp for grouping purposes.
+    // The Pre-combine output will inherit the timestamp of one of its inputs.
+    GroupingTableKey groupingKey =
+        isGloballyWindowed && windows.size() == 1
+            ? new GloballyWindowedTableGroupingKey(value.getKey(), keyCoder, keySizer)
+            : new WindowedGroupingTableKey(
+                value.getKey(), windows, keyCoder, keySizer);
+
+    lruMap.compute(
+        groupingKey,
+        (key, tableEntry) -> {
+          if (tableEntry == null) {
+            weight += groupingKey.getWeight();
+            tableEntry =
+                new GroupingTableEntry(
+                    groupingKey,
+                    timestamp,
+                    value.getKey(),
+                    value.getValue());
+          } else {
+            weight -= tableEntry.getWeight();
+            tableEntry.add(value.getValue());
+          }
+          weight += tableEntry.getWeight();
+          return tableEntry;
+        });
+
+    if (checkFlushCounter++ < checkFlushLimit) {
+      return;
+    } else {
+      checkFlushLimit = Math.min(checkFlushLimit + 1, 25);
+      checkFlushCounter = 0;
+      flushIfNeeded(receiver);
+    }
+  }
+
+  private void flushIfNeeded(WindowedFnDataReceiver<KV<K, AccumT>> receiver)
       throws Exception {
     // Increase the maximum only if we require it
     maxWeight.accumulateAndGet(weight, (current, update) -> current < update ? update : current);
@@ -473,22 +526,29 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
    * Output the given entry. Does not actually remove it from the table or update this table's size.
    */
   private void output(
-      GroupingTableEntry entry, FnDataReceiver<WindowedValue<KV<K, AccumT>>> receiver)
+      GroupingTableEntry entry, WindowedFnDataReceiver<KV<K, AccumT>> receiver)
       throws Exception {
     entry.compact();
-    receiver.accept(
-        isGloballyWindowed
-            ? WindowedValue.valueInGlobalWindow(KV.of(entry.getKey(), entry.getAccumulator()))
-            : WindowedValue.of(
-                KV.of(entry.getKey(), entry.getAccumulator()),
-                entry.getOutputTimestamp(),
-                entry.getGroupingKey().getWindows(),
-                // The PaneInfow will always be overwritten by the GBK.
-                PaneInfo.NO_FIRING));
+    KV<K, AccumT> output = KV.of(entry.getKey(), entry.getAccumulator());
+    if (isGloballyWindowed) {
+      receiver.accept(
+          output,
+          GlobalWindow.TIMESTAMP_MIN_VALUE,
+          GlobalWindow.INSTANCE,
+          // The PaneInfow will always be overwritten by the GBK.
+          PaneInfo.NO_FIRING);
+    } else {
+      receiver.accept(
+          output,
+          entry.getOutputTimestamp(),
+          entry.getGroupingKey().getWindows(),
+          // The PaneInfow will always be overwritten by the GBK.
+          PaneInfo.NO_FIRING);
+    }
   }
 
   /** Flushes all entries in this table to output. */
-  public void flush(FnDataReceiver<WindowedValue<KV<K, AccumT>>> receiver) throws Exception {
+  public void flush(WindowedFnDataReceiver<KV<K, AccumT>> receiver) throws Exception {
     cache.remove(Key.INSTANCE);
     for (GroupingTableEntry valueToFlush : lruMap.values()) {
       output(valueToFlush, receiver);

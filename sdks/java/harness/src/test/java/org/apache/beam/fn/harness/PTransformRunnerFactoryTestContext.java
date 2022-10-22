@@ -48,12 +48,12 @@ import org.apache.beam.sdk.fn.data.CloseableFnDataReceiver;
 import org.apache.beam.sdk.fn.data.DataEndpoint;
 import org.apache.beam.sdk.fn.data.FnDataReceiver;
 import org.apache.beam.sdk.fn.data.TimerEndpoint;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.function.ThrowingRunnable;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.options.PipelineOptionsFactory;
 import org.apache.beam.sdk.transforms.DoFn;
 import org.apache.beam.sdk.transforms.DoFn.BundleFinalizer;
-import org.apache.beam.sdk.util.WindowedValue;
 import org.joda.time.Instant;
 
 /**
@@ -178,7 +178,7 @@ public abstract class PTransformRunnerFactoryTestContext
 
     Builder runnerCapabilities(Set<String> value);
 
-    Builder pCollectionConsumers(Map<String, List<FnDataReceiver<?>>> value);
+    Builder pCollectionConsumers(Map<String, List<WindowedFnDataReceiver<?>>> value);
 
     Builder incomingDataEndpoints(Map<ApiServiceDescriptor, List<DataEndpoint<?>>> value);
 
@@ -210,30 +210,27 @@ public abstract class PTransformRunnerFactoryTestContext
   }
 
   /** Returns a map from PCollection id to a list of registered consumers. */
-  public abstract Map<String, List<FnDataReceiver<?>>> getPCollectionConsumers();
+  public abstract Map<String, List<WindowedFnDataReceiver<?>>> getPCollectionConsumers();
 
   @Override
   public <T> void addPCollectionConsumer(
-      String pCollectionId, FnDataReceiver<WindowedValue<T>> consumer) {
+      String pCollectionId, WindowedFnDataReceiver<T> consumer) {
     getPCollectionConsumers()
         .computeIfAbsent(pCollectionId, (unused) -> new ArrayList<>())
         .add(consumer);
   }
 
   @Override
-  public <T> FnDataReceiver<T> getPCollectionConsumer(String pCollectionId) {
-    List<FnDataReceiver<?>> receivers = getPCollectionConsumers().get(pCollectionId);
+  public <T> WindowedFnDataReceiver<T> getPCollectionConsumer(String pCollectionId) {
+    List<WindowedFnDataReceiver<T>> receivers = (List) getPCollectionConsumers().get(pCollectionId);
     if (receivers == null) {
       throw new IllegalStateException("No consumers registered for " + pCollectionId);
     } else if (receivers.size() == 1) {
-      return (FnDataReceiver<T>) receivers.get(0);
+      return receivers.get(0);
     }
-    return new FnDataReceiver<T>() {
-      @Override
-      public void accept(T input) throws Exception {
-        for (FnDataReceiver<?> receiver : receivers) {
-          ((FnDataReceiver<T>) receiver).accept(input);
-        }
+    return (input, windowedContext) -> {
+      for (int i = 0, size = receivers.size(); i < size; ++i) {
+        receivers.get(i).accept(input, windowedContext);
       }
     };
   }

@@ -20,11 +20,15 @@ package org.apache.beam.fn.harness;
 import static org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Iterables.getOnlyElement;
 
 import java.io.IOException;
+import java.util.Collection;
 import org.apache.beam.model.pipeline.v1.RunnerApi.PTransform;
-import org.apache.beam.sdk.fn.data.FnDataReceiver;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.function.ThrowingFunction;
+import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
+import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Iterables;
+import org.joda.time.Instant;
 
 /**
  * Utilities to create {@code PTransformRunners} which execute simple map functions.
@@ -88,7 +92,7 @@ public abstract class MapFnRunners {
 
     @Override
     public Mapper<InputT, OutputT> createRunnerForPTransform(Context context) throws IOException {
-      FnDataReceiver<WindowedValue<InputT>> consumer =
+      WindowedFnDataReceiver<OutputT> consumer =
           context.getPCollectionConsumer(
               getOnlyElement(context.getPTransform().getOutputsMap().values()));
 
@@ -97,7 +101,7 @@ public abstract class MapFnRunners {
 
       String pCollectionId =
           Iterables.getOnlyElement(context.getPTransform().getInputsMap().values());
-      context.addPCollectionConsumer(pCollectionId, mapper::map);
+      context.addPCollectionConsumer(pCollectionId, mapper);
       return mapper;
     }
   }
@@ -105,13 +109,11 @@ public abstract class MapFnRunners {
   @FunctionalInterface
   private interface MapperFactory<InputT, OutputT> {
     Mapper<InputT, OutputT> create(
-        String ptransformId, PTransform ptransform, FnDataReceiver<WindowedValue<OutputT>> outputs)
+        String ptransformId, PTransform ptransform, WindowedFnDataReceiver<OutputT> outputs)
         throws IOException;
   }
 
-  private interface Mapper<InputT, OutputT> {
-    void map(WindowedValue<InputT> input) throws Exception;
-  }
+  private interface Mapper<InputT, OutputT> extends WindowedFnDataReceiver<InputT> { }
 
   private static class ExplodedWindowedValueMapperFactory<InputT, OutputT>
       implements MapperFactory<InputT, OutputT> {
@@ -124,13 +126,27 @@ public abstract class MapFnRunners {
 
     @Override
     public Mapper<InputT, OutputT> create(
-        String ptransformId, PTransform ptransform, FnDataReceiver<WindowedValue<OutputT>> outputs)
+        String ptransformId, PTransform ptransform, WindowedFnDataReceiver<OutputT> outputs)
         throws IOException {
       ThrowingFunction<WindowedValue<InputT>, WindowedValue<OutputT>> fn =
           fnFactory.forPTransform(ptransformId, ptransform);
-      return input -> {
-        for (WindowedValue<InputT> exploded : input.explodeWindows()) {
-          outputs.accept(fn.apply(exploded));
+      return new Mapper<InputT, OutputT>() {
+        @Override
+        public void accept(InputT input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo)
+            throws Exception {
+          WindowedValue<InputT> windowedInput = WindowedValue.of(input, timestamp, window, paneInfo);
+          WindowedValue<OutputT> windowedOutput = fn.apply(windowedInput);
+          outputs.accept(windowedOutput.getValue(), windowedOutput.getTimestamp(),windowedOutput.getWindows(), windowedOutput.getPane());
+        }
+
+        @Override
+        public void accept(InputT input, Instant timestamp,
+            Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+          for (BoundedWindow window : windows) {
+            WindowedValue<InputT> windowedInput = WindowedValue.of(input, timestamp, window, paneInfo);
+            WindowedValue<OutputT> windowedOutput = fn.apply(windowedInput);
+            outputs.accept(windowedOutput.getValue(), windowedOutput.getTimestamp(),windowedOutput.getWindows(), windowedOutput.getPane());
+          }
         }
       };
     }
@@ -146,10 +162,22 @@ public abstract class MapFnRunners {
 
     @Override
     public Mapper<InputT, OutputT> create(
-        String ptransformId, PTransform ptransform, FnDataReceiver<WindowedValue<OutputT>> outputs)
+        String ptransformId, PTransform ptransform, WindowedFnDataReceiver<OutputT> outputs)
         throws IOException {
       ThrowingFunction<InputT, OutputT> fn = fnFactory.forPTransform(ptransformId, ptransform);
-      return input -> outputs.accept(input.withValue(fn.apply(input.getValue())));
+      return new Mapper<InputT, OutputT>() {
+        @Override
+        public void accept(InputT input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo)
+            throws Exception {
+          outputs.accept(fn.apply(input), timestamp, window, paneInfo);
+        }
+
+        @Override
+        public void accept(InputT input, Instant timestamp,
+            Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+          outputs.accept(fn.apply(input), timestamp, windows, paneInfo);
+        }
+      };
     }
   }
 }

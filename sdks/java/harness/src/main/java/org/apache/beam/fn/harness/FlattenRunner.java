@@ -23,8 +23,7 @@ import com.google.auto.service.AutoService;
 import java.io.IOException;
 import java.util.Map;
 import org.apache.beam.runners.core.construction.PTransformTranslation;
-import org.apache.beam.sdk.fn.data.FnDataReceiver;
-import org.apache.beam.sdk.util.WindowedValue;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableMap;
 
 /** Executes flatten PTransforms. */
@@ -46,13 +45,13 @@ public class FlattenRunner<InputT> {
   static class Factory<InputT> implements PTransformRunnerFactory<FlattenRunner<InputT>> {
     @Override
     public FlattenRunner<InputT> createRunnerForPTransform(Context context) throws IOException {
-      // Give each input a MultiplexingFnDataReceiver to all outputs of the flatten.
+      // Give each input a multiplexing WindowedFnDataReceiver to all outputs of the flatten.
       String output = getOnlyElement(context.getPTransform().getOutputsMap().values());
-      FnDataReceiver<WindowedValue<?>> receiver = context.getPCollectionConsumer(output);
+      WindowedFnDataReceiver<InputT> receiver = context.getPCollectionConsumer(output);
 
       FlattenRunner<InputT> runner = new FlattenRunner<>();
       for (String pCollectionId : context.getPTransform().getInputsMap().values()) {
-        context.addPCollectionConsumer(pCollectionId, (FnDataReceiver) receiver);
+        context.addPCollectionConsumer(pCollectionId, receiver);
       }
 
       return runner;

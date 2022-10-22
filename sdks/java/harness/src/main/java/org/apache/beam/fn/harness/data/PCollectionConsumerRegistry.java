@@ -20,6 +20,7 @@ package org.apache.beam.fn.harness.data;
 import com.google.auto.value.AutoValue;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,14 +45,17 @@ import org.apache.beam.runners.core.metrics.MonitoringInfoMetricName;
 import org.apache.beam.runners.core.metrics.ShortIdMap;
 import org.apache.beam.runners.core.metrics.SimpleMonitoringInfoBuilder;
 import org.apache.beam.sdk.coders.Coder;
-import org.apache.beam.sdk.fn.data.FnDataReceiver;
+import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.metrics.Distribution;
 import org.apache.beam.sdk.metrics.MetricsContainer;
 import org.apache.beam.sdk.metrics.MetricsEnvironment.MetricsEnvironmentState;
+import org.apache.beam.sdk.transforms.windowing.BoundedWindow;
+import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.util.WindowedValue;
 import org.apache.beam.sdk.util.WindowedValue.WindowedValueCoder;
 import org.apache.beam.sdk.util.common.ElementByteSizeObserver;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableList;
+import org.joda.time.Instant;
 
 /**
  * The {@code PCollectionConsumerRegistry} is used to maintain a collection of consuming
@@ -71,7 +75,7 @@ public class PCollectionConsumerRegistry {
   @SuppressWarnings({"rawtypes"})
   abstract static class ConsumerAndMetadata {
     public static ConsumerAndMetadata forConsumer(
-        FnDataReceiver consumer,
+        WindowedFnDataReceiver consumer,
         String pTransformId,
         ExecutionState state,
         MetricsContainer metricsContainer) {
@@ -79,7 +83,7 @@ public class PCollectionConsumerRegistry {
           consumer, pTransformId, state, metricsContainer);
     }
 
-    public abstract FnDataReceiver getConsumer();
+    public abstract WindowedFnDataReceiver getConsumer();
 
     public abstract String getPTransformId();
 
@@ -93,7 +97,7 @@ public class PCollectionConsumerRegistry {
   private final ExecutionStateTracker stateTracker;
   private final ShortIdMap shortIdMap;
   private final Map<String, List<ConsumerAndMetadata>> pCollectionIdsToConsumers;
-  private final Map<String, FnDataReceiver> pCollectionIdsToWrappedConsumer;
+  private final Map<String, WindowedFnDataReceiver> pCollectionIdsToWrappedConsumer;
   private final BundleProgressReporter.Registrar bundleProgressReporterRegistrar;
   private final ProcessBundleDescriptor processBundleDescriptor;
   private final RehydratedComponents rehydratedComponents;
@@ -142,7 +146,7 @@ public class PCollectionConsumerRegistry {
       String pCollectionId,
       String pTransformId,
       String pTransformUniqueName,
-      FnDataReceiver<WindowedValue<T>> consumer) {
+      WindowedFnDataReceiver<T> consumer) {
     // Just save these consumers for now, but package them up later with an
     // ElementCountFnDataReceiver and possibly a MultiplexingFnDataReceiver
     // if there are multiple consumers.
@@ -187,9 +191,9 @@ public class PCollectionConsumerRegistry {
    * New consumers should not be register()-ed after calling this method. This will cause a
    * RuntimeException, as this would fail to properly wrap the late-added consumer to track metrics.
    *
-   * @return A {@link FnDataReceiver} which directly wraps all the registered consumers.
+   * @return A {@link WindowedFnDataReceiver} which directly wraps all the registered consumers.
    */
-  public FnDataReceiver<WindowedValue<?>> getMultiplexingConsumer(String pCollectionId) {
+  public WindowedFnDataReceiver<?> getMultiplexingConsumer(String pCollectionId) {
     return pCollectionIdsToWrappedConsumer.computeIfAbsent(
         pCollectionId,
         pcId -> {
@@ -219,10 +223,10 @@ public class PCollectionConsumerRegistry {
           if (consumerAndMetadatas.size() == 1) {
             ConsumerAndMetadata consumerAndMetadata = consumerAndMetadatas.get(0);
             if (consumerAndMetadata.getConsumer() instanceof HandlesSplits) {
-              return new SplittingMetricTrackingFnDataReceiver(
+              return new SplittingMetricTrackingWindowedFnDataReceiver(
                   pcId, coder, consumerAndMetadata, metricsEnvironmentState);
             }
-            return new MetricTrackingFnDataReceiver(
+            return new MetricTrackingWindowedFnDataReceiver(
                 pcId, coder, consumerAndMetadata, metricsEnvironmentState);
           } else {
             /* TODO(SDF), Consider supporting splitting each consumer individually. This would never
@@ -242,8 +246,8 @@ public class PCollectionConsumerRegistry {
    *
    * @param <T> - The receiving type of the PTransform.
    */
-  private class MetricTrackingFnDataReceiver<T> implements FnDataReceiver<WindowedValue<T>> {
-    private final FnDataReceiver<WindowedValue<T>> delegate;
+  private class MetricTrackingWindowedFnDataReceiver<T> implements WindowedFnDataReceiver<T> {
+    private final WindowedFnDataReceiver<T> delegate;
     private final ExecutionState executionState;
     private final BundleCounter elementCountCounter;
     private final SampleByteSizeDistribution<T> sampledByteSizeDistribution;
@@ -251,7 +255,7 @@ public class PCollectionConsumerRegistry {
     private final MetricsContainer metricsContainer;
     private final MetricsEnvironmentState metricsEnvironmentState;
 
-    public MetricTrackingFnDataReceiver(
+    public MetricTrackingWindowedFnDataReceiver(
         String pCollectionId,
         Coder<T> coder,
         ConsumerAndMetadata consumerAndMetadata,
@@ -296,12 +300,12 @@ public class PCollectionConsumerRegistry {
     }
 
     @Override
-    public void accept(WindowedValue<T> input) throws Exception {
+    public void accept(T input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo) throws Exception {
       // Increment the counter for each window the element occurs in.
-      this.elementCountCounter.inc(input.getWindows().size());
+      this.elementCountCounter.inc(1);
       // TODO(https://github.com/apache/beam/issues/20730): Consider updating size per window when
       // we have window optimization.
-      this.sampledByteSizeDistribution.tryUpdate(input.getValue(), this.coder);
+      this.sampledByteSizeDistribution.tryUpdate(input, this.coder);
 
       // Wrap the consumer with extra logic to set the metric container with the appropriate
       // PTransform context. This ensures that user metrics obtain the pTransform ID when they are
@@ -310,7 +314,29 @@ public class PCollectionConsumerRegistry {
       MetricsContainer oldContainer = metricsEnvironmentState.activate(metricsContainer);
       executionState.activate();
       try {
-        this.delegate.accept(input);
+        this.delegate.accept(input, timestamp, window, paneInfo);
+      } finally {
+        executionState.deactivate();
+        metricsEnvironmentState.activate(oldContainer);
+      }
+      this.sampledByteSizeDistribution.finishLazyUpdate();
+    }
+    @Override
+    public void accept(T input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+      // Increment the counter for each window the element occurs in.
+      this.elementCountCounter.inc(windows.size());
+      // TODO(https://github.com/apache/beam/issues/20730): Consider updating size per window when
+      // we have window optimization.
+      this.sampledByteSizeDistribution.tryUpdate(input, this.coder);
+
+      // Wrap the consumer with extra logic to set the metric container with the appropriate
+      // PTransform context. This ensures that user metrics obtain the pTransform ID when they are
+      // created. Also use the ExecutionStateTracker and enter an appropriate state to track the
+      // Process Bundle Execution time metric.
+      MetricsContainer oldContainer = metricsEnvironmentState.activate(metricsContainer);
+      executionState.activate();
+      try {
+        this.delegate.accept(input, timestamp, windows, paneInfo);
       } finally {
         executionState.deactivate();
         metricsEnvironmentState.activate(oldContainer);
@@ -327,7 +353,7 @@ public class PCollectionConsumerRegistry {
    * @param <T> - The receiving type of the PTransform.
    */
   private class MultiplexingMetricTrackingFnDataReceiver<T>
-      implements FnDataReceiver<WindowedValue<T>> {
+      implements WindowedFnDataReceiver<T> {
     private final List<ConsumerAndMetadata> consumerAndMetadatas;
     private final MetricsEnvironmentState metricsEnvironmentState;
     private final BundleCounter elementCountCounter;
@@ -377,12 +403,12 @@ public class PCollectionConsumerRegistry {
     }
 
     @Override
-    public void accept(WindowedValue<T> input) throws Exception {
+    public void accept(T input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo) throws Exception {
       // Increment the counter for each window the element occurs in.
-      this.elementCountCounter.inc(input.getWindows().size());
+      this.elementCountCounter.inc(1);
       // TODO(https://github.com/apache/beam/issues/20730): Consider updating size per window
       // when we have window optimization.
-      this.sampledByteSizeDistribution.tryUpdate(input.getValue(), coder);
+      this.sampledByteSizeDistribution.tryUpdate(input, coder);
 
       // Wrap the consumer with extra logic to set the metric container with the appropriate
       // PTransform context. This ensures that user metrics obtain the pTransform ID when they are
@@ -394,7 +420,34 @@ public class PCollectionConsumerRegistry {
         ExecutionState state = consumerAndMetadata.getExecutionState();
         state.activate();
         try {
-          consumerAndMetadata.getConsumer().accept(input);
+          consumerAndMetadata.getConsumer().accept(input, timestamp, window, paneInfo);
+        } finally {
+          state.deactivate();
+          metricsEnvironmentState.activate(oldContainer);
+        }
+        this.sampledByteSizeDistribution.finishLazyUpdate();
+      }
+    }
+
+    @Override
+    public void accept(T input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+      // Increment the counter for each window the element occurs in.
+      this.elementCountCounter.inc(windows.size());
+      // TODO(https://github.com/apache/beam/issues/20730): Consider updating size per window
+      // when we have window optimization.
+      this.sampledByteSizeDistribution.tryUpdate(input, coder);
+
+      // Wrap the consumer with extra logic to set the metric container with the appropriate
+      // PTransform context. This ensures that user metrics obtain the pTransform ID when they are
+      // created. Also use the ExecutionStateTracker and enter an appropriate state to track the
+      // Process Bundle Execution time metric.
+      for (ConsumerAndMetadata consumerAndMetadata : consumerAndMetadatas) {
+        MetricsContainer oldContainer =
+            metricsEnvironmentState.activate(consumerAndMetadata.getMetricsContainer());
+        ExecutionState state = consumerAndMetadata.getExecutionState();
+        state.activate();
+        try {
+          consumerAndMetadata.getConsumer().accept(input, timestamp, windows, paneInfo);
         } finally {
           state.deactivate();
           metricsEnvironmentState.activate(oldContainer);
@@ -411,11 +464,11 @@ public class PCollectionConsumerRegistry {
    *
    * @param <T> - The receiving type of the PTransform.
    */
-  private class SplittingMetricTrackingFnDataReceiver<T> extends MetricTrackingFnDataReceiver<T>
+  private class SplittingMetricTrackingWindowedFnDataReceiver<T> extends MetricTrackingWindowedFnDataReceiver<T>
       implements HandlesSplits {
     private final HandlesSplits delegate;
 
-    public SplittingMetricTrackingFnDataReceiver(
+    public SplittingMetricTrackingWindowedFnDataReceiver(
         String pCollection,
         Coder<T> coder,
         ConsumerAndMetadata consumerAndMetadata,
