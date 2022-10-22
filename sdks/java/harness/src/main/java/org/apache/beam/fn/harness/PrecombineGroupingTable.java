@@ -57,9 +57,6 @@ import org.joda.time.Instant;
 public class PrecombineGroupingTable<K, InputT, AccumT>
     implements Shrinkable<PrecombineGroupingTable<K, InputT, AccumT>>, Weighted {
 
-  private static final Collection<? extends BoundedWindow> GLOBAL_WINDOWS =
-      Collections.singletonList(GlobalWindow.INSTANCE);
-
   /**
    * Returns a grouping table that combines inputs into an accumulator. The grouping table uses the
    * cache to defer flushing output until the cache evicts the table.

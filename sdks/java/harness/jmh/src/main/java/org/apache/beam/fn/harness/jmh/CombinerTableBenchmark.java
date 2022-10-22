@@ -77,7 +77,7 @@ public class CombinerTableBenchmark {
   public void uniformDistribution(CombinerTable table) throws Exception {
     for (int i = 0; i < table.numPerKey; i++) {
       for (WindowedValue<KV<String, Integer>> element : table.elements) {
-        table.groupingTable.put(element, null);
+        table.groupingTable.put(element.getValue(), element.getTimestamp(), element.getWindows(), null);
       }
     }
   }
