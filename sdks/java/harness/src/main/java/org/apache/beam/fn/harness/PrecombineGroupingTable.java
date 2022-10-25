@@ -31,7 +31,6 @@ import org.apache.beam.runners.core.GlobalCombineFnRunner;
 import org.apache.beam.runners.core.GlobalCombineFnRunners;
 import org.apache.beam.runners.core.NullSideInputReader;
 import org.apache.beam.sdk.coders.Coder;
-import org.apache.beam.sdk.fn.data.FnDataReceiver;
 import org.apache.beam.sdk.fn.data.WindowedFnDataReceiver;
 import org.apache.beam.sdk.options.PipelineOptions;
 import org.apache.beam.sdk.transforms.Combine.CombineFn;
@@ -41,7 +40,6 @@ import org.apache.beam.sdk.transforms.windowing.PaneInfo;
 import org.apache.beam.sdk.util.Weighted;
 import org.apache.beam.sdk.values.KV;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.annotations.VisibleForTesting;
-import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.base.Preconditions;
 import org.joda.time.Instant;
 
 /**
@@ -393,11 +391,13 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
    */
   @VisibleForTesting
   public void put(
-      KV<K, InputT> value, Instant timestamp, BoundedWindow window, WindowedFnDataReceiver<KV<K, AccumT>> receiver)
+      KV<K, InputT> value,
+      Instant timestamp,
+      BoundedWindow window,
+      WindowedFnDataReceiver<KV<K, AccumT>> receiver)
       throws Exception {
     // TODO(lcwik) FIX ME: Consider making a SingleWindowedGroupingTableKey to make that
     // hot path faster.
-
 
     // Ignore timestamp for grouping purposes.
     // The Pre-combine output will inherit the timestamp of one of its inputs.
@@ -413,11 +413,7 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
           if (tableEntry == null) {
             weight += groupingKey.getWeight();
             tableEntry =
-                new GroupingTableEntry(
-                    groupingKey,
-                    timestamp,
-                    value.getKey(),
-                    value.getValue());
+                new GroupingTableEntry(groupingKey, timestamp, value.getKey(), value.getValue());
           } else {
             weight -= tableEntry.getWeight();
             tableEntry.add(value.getValue());
@@ -441,16 +437,19 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
    */
   @VisibleForTesting
   public void put(
-      KV<K, InputT> value, Instant timestamp, Collection<? extends BoundedWindow> windows, WindowedFnDataReceiver<KV<K, AccumT>> receiver)
+      KV<K, InputT> value,
+      Instant timestamp,
+      Collection<? extends BoundedWindow> windows,
+      WindowedFnDataReceiver<KV<K, AccumT>> receiver)
       throws Exception {
-    // TODO(lcwik): Fix ME, what to do with the case where global window appears multiple times in windows list
+    // TODO(lcwik): Fix ME, what to do with the case where global window appears multiple times in
+    // windows list
     // Ignore timestamp for grouping purposes.
     // The Pre-combine output will inherit the timestamp of one of its inputs.
     GroupingTableKey groupingKey =
         isGloballyWindowed && windows.size() == 1
             ? new GloballyWindowedTableGroupingKey(value.getKey(), keyCoder, keySizer)
-            : new WindowedGroupingTableKey(
-                value.getKey(), windows, keyCoder, keySizer);
+            : new WindowedGroupingTableKey(value.getKey(), windows, keyCoder, keySizer);
 
     lruMap.compute(
         groupingKey,
@@ -458,11 +457,7 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
           if (tableEntry == null) {
             weight += groupingKey.getWeight();
             tableEntry =
-                new GroupingTableEntry(
-                    groupingKey,
-                    timestamp,
-                    value.getKey(),
-                    value.getValue());
+                new GroupingTableEntry(groupingKey, timestamp, value.getKey(), value.getValue());
           } else {
             weight -= tableEntry.getWeight();
             tableEntry.add(value.getValue());
@@ -480,8 +475,7 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
     }
   }
 
-  private void flushIfNeeded(WindowedFnDataReceiver<KV<K, AccumT>> receiver)
-      throws Exception {
+  private void flushIfNeeded(WindowedFnDataReceiver<KV<K, AccumT>> receiver) throws Exception {
     // Increase the maximum only if we require it
     maxWeight.accumulateAndGet(weight, (current, update) -> current < update ? update : current);
 
@@ -522,8 +516,7 @@ public class PrecombineGroupingTable<K, InputT, AccumT>
   /**
    * Output the given entry. Does not actually remove it from the table or update this table's size.
    */
-  private void output(
-      GroupingTableEntry entry, WindowedFnDataReceiver<KV<K, AccumT>> receiver)
+  private void output(GroupingTableEntry entry, WindowedFnDataReceiver<KV<K, AccumT>> receiver)
       throws Exception {
     entry.compact();
     KV<K, AccumT> output = KV.of(entry.getKey(), entry.getAccumulator());

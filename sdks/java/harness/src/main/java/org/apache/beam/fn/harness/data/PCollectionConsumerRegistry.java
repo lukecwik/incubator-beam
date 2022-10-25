@@ -300,7 +300,8 @@ public class PCollectionConsumerRegistry {
     }
 
     @Override
-    public void accept(T input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo) throws Exception {
+    public void accept(T input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo)
+        throws Exception {
       // Increment the counter for each window the element occurs in.
       this.elementCountCounter.inc(1);
       // TODO(https://github.com/apache/beam/issues/20730): Consider updating size per window when
@@ -321,8 +322,11 @@ public class PCollectionConsumerRegistry {
       }
       this.sampledByteSizeDistribution.finishLazyUpdate();
     }
+
     @Override
-    public void accept(T input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+    public void accept(
+        T input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo)
+        throws Exception {
       // Increment the counter for each window the element occurs in.
       this.elementCountCounter.inc(windows.size());
       // TODO(https://github.com/apache/beam/issues/20730): Consider updating size per window when
@@ -352,8 +356,7 @@ public class PCollectionConsumerRegistry {
    *
    * @param <T> - The receiving type of the PTransform.
    */
-  private class MultiplexingMetricTrackingFnDataReceiver<T>
-      implements WindowedFnDataReceiver<T> {
+  private class MultiplexingMetricTrackingFnDataReceiver<T> implements WindowedFnDataReceiver<T> {
     private final List<ConsumerAndMetadata> consumerAndMetadatas;
     private final MetricsEnvironmentState metricsEnvironmentState;
     private final BundleCounter elementCountCounter;
@@ -403,7 +406,8 @@ public class PCollectionConsumerRegistry {
     }
 
     @Override
-    public void accept(T input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo) throws Exception {
+    public void accept(T input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo)
+        throws Exception {
       // Increment the counter for each window the element occurs in.
       this.elementCountCounter.inc(1);
       // TODO(https://github.com/apache/beam/issues/20730): Consider updating size per window
@@ -430,7 +434,9 @@ public class PCollectionConsumerRegistry {
     }
 
     @Override
-    public void accept(T input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+    public void accept(
+        T input, Instant timestamp, Collection<? extends BoundedWindow> windows, PaneInfo paneInfo)
+        throws Exception {
       // Increment the counter for each window the element occurs in.
       this.elementCountCounter.inc(windows.size());
       // TODO(https://github.com/apache/beam/issues/20730): Consider updating size per window
@@ -464,8 +470,8 @@ public class PCollectionConsumerRegistry {
    *
    * @param <T> - The receiving type of the PTransform.
    */
-  private class SplittingMetricTrackingWindowedFnDataReceiver<T> extends MetricTrackingWindowedFnDataReceiver<T>
-      implements HandlesSplits {
+  private class SplittingMetricTrackingWindowedFnDataReceiver<T>
+      extends MetricTrackingWindowedFnDataReceiver<T> implements HandlesSplits {
     private final HandlesSplits delegate;
 
     public SplittingMetricTrackingWindowedFnDataReceiver(

@@ -90,8 +90,7 @@ public interface PTransformRunnerFactory<T> {
     Set<String> getRunnerCapabilities();
 
     /** Register as a consumer for a given PCollection id. */
-    <T> void addPCollectionConsumer(
-        String pCollectionId, WindowedFnDataReceiver<T> consumer);
+    <T> void addPCollectionConsumer(String pCollectionId, WindowedFnDataReceiver<T> consumer);
 
     /**
      * Returns a {@link WindowedFnDataReceiver} to send output to for the specified PCollection id.

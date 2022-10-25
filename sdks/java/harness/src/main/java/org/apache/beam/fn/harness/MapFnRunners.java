@@ -113,7 +113,7 @@ public abstract class MapFnRunners {
         throws IOException;
   }
 
-  private interface Mapper<InputT, OutputT> extends WindowedFnDataReceiver<InputT> { }
+  private interface Mapper<InputT, OutputT> extends WindowedFnDataReceiver<InputT> {}
 
   private static class ExplodedWindowedValueMapperFactory<InputT, OutputT>
       implements MapperFactory<InputT, OutputT> {
@@ -134,18 +134,32 @@ public abstract class MapFnRunners {
         @Override
         public void accept(InputT input, Instant timestamp, BoundedWindow window, PaneInfo paneInfo)
             throws Exception {
-          WindowedValue<InputT> windowedInput = WindowedValue.of(input, timestamp, window, paneInfo);
+          WindowedValue<InputT> windowedInput =
+              WindowedValue.of(input, timestamp, window, paneInfo);
           WindowedValue<OutputT> windowedOutput = fn.apply(windowedInput);
-          outputs.accept(windowedOutput.getValue(), windowedOutput.getTimestamp(),windowedOutput.getWindows(), windowedOutput.getPane());
+          outputs.accept(
+              windowedOutput.getValue(),
+              windowedOutput.getTimestamp(),
+              windowedOutput.getWindows(),
+              windowedOutput.getPane());
         }
 
         @Override
-        public void accept(InputT input, Instant timestamp,
-            Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+        public void accept(
+            InputT input,
+            Instant timestamp,
+            Collection<? extends BoundedWindow> windows,
+            PaneInfo paneInfo)
+            throws Exception {
           for (BoundedWindow window : windows) {
-            WindowedValue<InputT> windowedInput = WindowedValue.of(input, timestamp, window, paneInfo);
+            WindowedValue<InputT> windowedInput =
+                WindowedValue.of(input, timestamp, window, paneInfo);
             WindowedValue<OutputT> windowedOutput = fn.apply(windowedInput);
-            outputs.accept(windowedOutput.getValue(), windowedOutput.getTimestamp(),windowedOutput.getWindows(), windowedOutput.getPane());
+            outputs.accept(
+                windowedOutput.getValue(),
+                windowedOutput.getTimestamp(),
+                windowedOutput.getWindows(),
+                windowedOutput.getPane());
           }
         }
       };
@@ -173,8 +187,12 @@ public abstract class MapFnRunners {
         }
 
         @Override
-        public void accept(InputT input, Instant timestamp,
-            Collection<? extends BoundedWindow> windows, PaneInfo paneInfo) throws Exception {
+        public void accept(
+            InputT input,
+            Instant timestamp,
+            Collection<? extends BoundedWindow> windows,
+            PaneInfo paneInfo)
+            throws Exception {
           outputs.accept(fn.apply(input), timestamp, windows, paneInfo);
         }
       };

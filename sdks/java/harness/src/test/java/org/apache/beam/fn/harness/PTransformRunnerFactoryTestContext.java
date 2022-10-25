@@ -213,8 +213,7 @@ public abstract class PTransformRunnerFactoryTestContext
   public abstract Map<String, List<WindowedFnDataReceiver<?>>> getPCollectionConsumers();
 
   @Override
-  public <T> void addPCollectionConsumer(
-      String pCollectionId, WindowedFnDataReceiver<T> consumer) {
+  public <T> void addPCollectionConsumer(String pCollectionId, WindowedFnDataReceiver<T> consumer) {
     getPCollectionConsumers()
         .computeIfAbsent(pCollectionId, (unused) -> new ArrayList<>())
         .add(consumer);
