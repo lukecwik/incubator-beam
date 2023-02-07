@@ -518,6 +518,7 @@ public class UnboundedScheduledExecutorServiceTest {
     ThreadPoolExecutor executor =
         new ThreadPoolExecutor(100, 100, Long.MAX_VALUE, MILLISECONDS, new SynchronousQueue<>());
     // Schedule 100 threads that are going to be scheduling work non-stop but sequentially.
+    AtomicInteger maxWorkersSize = new AtomicInteger(0);
     for (int i = 0; i < 100; ++i) {
       executor.execute(
           () -> {
@@ -533,6 +534,11 @@ public class UnboundedScheduledExecutorServiceTest {
                     .submit(
                         () -> {
                           try {
+                            int allWorkersSize;
+                            synchronized (executorService.allWorkers) {
+                              allWorkersSize = executorService.allWorkers.size();
+                            }
+                            maxWorkersSize.accumulateAndGet(allWorkersSize, Math::max);
                             Thread.sleep(1);
                           } catch (InterruptedException e) {
                             throw new RuntimeException(e);
@@ -549,7 +555,7 @@ public class UnboundedScheduledExecutorServiceTest {
     executor.shutdown();
     executor.awaitTermination(3, MINUTES);
 
-    int largestPool = executorService.threadPoolExecutor.getLargestPoolSize();
+    int largestPool = maxWorkersSize.get();
     LOG.info("Created {} threads to execute at most 100 parallel tasks", largestPool);
     // Ideally we would never create more than 100, however with contention it is still possible
     // some extra threads will be created.

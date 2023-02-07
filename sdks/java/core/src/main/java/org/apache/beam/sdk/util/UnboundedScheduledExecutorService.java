@@ -17,30 +17,33 @@
  */
 package org.apache.beam.sdk.util;
 
-import static java.util.concurrent.TimeUnit.HOURS;
-import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.PriorityQueue;
+import java.util.Set;
 import java.util.concurrent.AbstractExecutorService;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedDeque;
 import java.util.concurrent.Delayed;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.RunnableScheduledFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.annotations.VisibleForTesting;
 import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.math.LongMath;
@@ -174,6 +177,11 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
         }
       }
     }
+
+    @Override
+    public String toString() {
+      return "ScheduledFutureTask[nextScheduledTime=" + time + ", period=" + period + "]";
+    }
   }
 
   // Used to break ties in ordering of future tasks that are scheduled for the same time
@@ -182,7 +190,11 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
   private final AtomicLong sequencer = new AtomicLong();
 
   private final NanoClock clock;
-  @VisibleForTesting final ThreadPoolExecutor threadPoolExecutor;
+  private final AtomicBoolean isShutdown;
+  private final AtomicBoolean isTerminated;
+  private final ThreadFactory threadFactory;
+  @VisibleForTesting final Set<Worker> allWorkers;
+  private final ConcurrentLinkedDeque<Worker> pendingWorkers;
   @VisibleForTesting final PriorityQueue<ScheduledFutureTask<?>> tasks;
   private final AbstractExecutorService invokeMethodsAdapter;
   private final Future<?> launchTasks;
@@ -191,38 +203,54 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
     this(NanoClock.SYSTEM);
   }
 
+  private class Worker implements Runnable {
+    private final Thread thread;
+    private Runnable runnable;
+
+    @SuppressWarnings("argument") // the thread is started outside of this worker
+    private Worker(Runnable runnable) {
+      this.runnable = runnable;
+      this.thread = threadFactory.newThread(this);
+    }
+
+    @Override
+    public void run() {
+      try {
+        while (true) {
+          runnable.run();
+          synchronized (this) {
+            pendingWorkers.add(this);
+            try {
+              this.wait();
+            } catch (InterruptedException e) {
+              return;
+            }
+          }
+        }
+      } finally {
+        synchronized (allWorkers) {
+          allWorkers.remove(this);
+        }
+      }
+    }
+  }
+
+  @SuppressWarnings({
+    "argument",
+    "method.invocation"
+  }) // synchronized for safe object publishing for TaskLauncher
   @VisibleForTesting
   UnboundedScheduledExecutorService(NanoClock clock) {
     this.clock = clock;
-    ThreadFactoryBuilder threadFactoryBuilder = new ThreadFactoryBuilder();
-    threadFactoryBuilder.setThreadFactory(MoreExecutors.platformThreadFactory());
-    threadFactoryBuilder.setDaemon(true);
-
-    this.threadPoolExecutor =
-        new ThreadPoolExecutor(
-            0,
-            Integer.MAX_VALUE, // Allow an unlimited number of re-usable threads.
-            // Put a high-timeout on non-core threads. This reduces memory for per-thread caches
-            // over time.
-            1,
-            HOURS,
-            new SynchronousQueue<Runnable>() {
-              @Override
-              public boolean offer(Runnable r) {
-                try {
-                  // By blocking for a little we hope to delay thread creation if there are existing
-                  // threads that will eventually return. We expect this timeout to be very rarely
-                  // hit as the high-watermark of necessary threads will remain for up to an hour.
-                  if (offer(r, 10, MILLISECONDS)) {
-                    return true;
-                  }
-                } catch (InterruptedException e) {
-                  Thread.currentThread().interrupt();
-                }
-                return false;
-              }
-            },
-            threadFactoryBuilder.build());
+    this.isShutdown = new AtomicBoolean();
+    this.isTerminated = new AtomicBoolean();
+    this.threadFactory =
+        new ThreadFactoryBuilder()
+            .setThreadFactory(MoreExecutors.platformThreadFactory())
+            .setDaemon(true)
+            .build();
+    this.allWorkers = new HashSet<>();
+    this.pendingWorkers = new ConcurrentLinkedDeque<>();
 
     // Create an internal adapter so that execute does not re-wrap the ScheduledFutureTask again
     this.invokeMethodsAdapter =
@@ -267,35 +295,25 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
           /* UnboundedScheduledExecutorService is the only caller after it has been initialized.*/
           @SuppressWarnings("method.invocation")
           public void execute(Runnable command) {
-            // These are already guaranteed to be a ScheduledFutureTask so there is no need to wrap
-            // it in another ScheduledFutureTask.
-            threadPoolExecutor.execute(command);
+            runNow(command);
           }
         };
     this.tasks = new PriorityQueue<>();
-    this.launchTasks =
-        threadPoolExecutor.submit(new TaskLauncher(tasks, threadPoolExecutor, clock));
+
+    synchronized (tasks) {
+      // Ensure that we synchronize on tasks to ensure that we are able to finish the
+      // constructor and publish the object safely since TaskLauncher also synchronizes on tasks
+      // before performing any lookups.
+      this.launchTasks = submit(new TaskLauncher());
+    }
   }
 
-  private static class TaskLauncher implements Callable<Void> {
-    private final PriorityQueue<ScheduledFutureTask<?>> tasks;
-    private final ThreadPoolExecutor threadPoolExecutor;
-    private final NanoClock clock;
-
-    private TaskLauncher(
-        PriorityQueue<ScheduledFutureTask<?>> tasks,
-        ThreadPoolExecutor threadPoolExecutor,
-        NanoClock clock) {
-      this.tasks = tasks;
-      this.threadPoolExecutor = threadPoolExecutor;
-      this.clock = clock;
-    }
-
+  private class TaskLauncher implements Callable<Void> {
     @Override
     public Void call() throws Exception {
       while (true) {
         synchronized (tasks) {
-          if (threadPoolExecutor.isShutdown()) {
+          if (isShutdown.get()) {
             return null;
           }
           ScheduledFutureTask<?> task = tasks.peek();
@@ -312,7 +330,7 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
           }
           // Remove the task from the queue since it is ready to be scheduled now
           task = tasks.remove();
-          threadPoolExecutor.execute(task);
+          runNow(task);
         }
       }
     }
@@ -320,9 +338,10 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
 
   @Override
   public void shutdown() {
-    threadPoolExecutor.shutdown();
+    isShutdown.set(true);
     synchronized (tasks) {
-      // Notify tasks which checks to see if the ThreadPoolExecutor is shutdown and exits cleanly.
+      // Notify tasks which causes the TaskLauncher to see if the ThreadPoolExecutor is shutdown and
+      // exits cleanly.
       tasks.notify();
     }
 
@@ -340,27 +359,48 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
   @Override
   public List<Runnable> shutdownNow() {
     shutdown();
+
+    if (isTerminated.get()) {
+      return Collections.emptyList();
+    }
+
+    synchronized (allWorkers) {
+      for (Worker worker : allWorkers) {
+        worker.thread.interrupt();
+      }
+      allWorkers.clear();
+    }
+
     synchronized (tasks) {
       List<Runnable> rval = new ArrayList<>(tasks);
       tasks.clear();
-      rval.addAll(threadPoolExecutor.shutdownNow());
       return rval;
     }
   }
 
   @Override
   public boolean isShutdown() {
-    return threadPoolExecutor.isShutdown();
+    return isShutdown.get();
   }
 
   @Override
   public boolean isTerminated() {
-    return threadPoolExecutor.isTerminated();
+    return isTerminated.get();
   }
 
   @Override
   public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-    return threadPoolExecutor.awaitTermination(timeout, unit);
+    long deadline = LongMath.saturatedAdd(System.nanoTime(), unit.toNanos(timeout));
+    synchronized (allWorkers) {
+      while (!allWorkers.isEmpty()) {
+        long remainingTimeToWait = LongMath.saturatedSubtract(deadline, System.nanoTime());
+        if (remainingTimeToWait <= 0) {
+          return false;
+        }
+        allWorkers.wait(remainingTimeToWait / 1000000L, (int) (remainingTimeToWait % 1000000L));
+      }
+      return true;
+    }
   }
 
   @Override
@@ -369,7 +409,7 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
       throw new NullPointerException();
     }
     ScheduledFutureTask<Void> task = new ScheduledFutureTask<>(command, null, triggerTime(0));
-    threadPoolExecutor.execute(task);
+    runNow(task);
   }
 
   @Override
@@ -378,7 +418,7 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
       throw new NullPointerException();
     }
     ScheduledFutureTask<Void> task = new ScheduledFutureTask<>(command, null, triggerTime(0));
-    threadPoolExecutor.execute(task);
+    runNow(task);
     return task;
   }
 
@@ -402,7 +442,7 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
       throw new NullPointerException();
     }
     ScheduledFutureTask<T> task = new ScheduledFutureTask<>(command, triggerTime(0));
-    threadPoolExecutor.execute(task);
+    runNow(task);
     return task;
   }
 
@@ -491,23 +531,54 @@ public final class UnboundedScheduledExecutorService implements ScheduledExecuto
     return task;
   }
 
+  private <@Nullable @KeyForBottom T> void runNow(Runnable command) {
+    if (isShutdown.get()) {
+      throw new RejectedExecutionException("Task " + command + " rejected from " + this);
+    }
+    Worker worker = pendingWorkers.poll();
+    if (worker == null) {
+      worker = new Worker(command);
+      synchronized (allWorkers) {
+        allWorkers.add(worker);
+      }
+      worker.thread.start();
+    } else {
+      synchronized (worker) {
+        worker.runnable = command;
+        worker.notify();
+      }
+    }
+  }
+
   private <@Nullable @KeyForBottom T> void runNowOrScheduleInTheFuture(
       ScheduledFutureTask<T> task) {
     long nanosToWait = LongMath.saturatedSubtract(task.time, clock.nanoTime());
     if (nanosToWait <= 0) {
-      threadPoolExecutor.execute(task);
+      runNow(task);
       return;
     }
 
     synchronized (tasks) {
-      if (isShutdown()) {
-        threadPoolExecutor
-            .getRejectedExecutionHandler()
-            .rejectedExecution(task, threadPoolExecutor);
+      if (isShutdown.get()) {
+        throw new RejectedExecutionException("Task " + task + " rejected from " + this);
       }
       tasks.add(task);
       tasks.notify();
     }
+  }
+
+  @Override
+  public String toString() {
+    int numWorkers;
+
+    synchronized (allWorkers) {
+      numWorkers = allWorkers.size();
+    }
+    return "UnboundedScheduledExecutorService[numThreads="
+        + numWorkers
+        + ", numScheduledTasks="
+        + pendingWorkers.size()
+        + "]";
   }
 
   /** Returns the nanoTime-based trigger time of a delayed action. */
