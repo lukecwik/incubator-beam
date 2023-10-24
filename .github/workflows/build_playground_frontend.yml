@@ -60,7 +60,7 @@ jobs:
         # This step is a workaround to avoid a decryption issue
         run: rm ~/.m2/settings.xml
       - name: install npm
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
             node-version: '14'
       - name: install docker linter
